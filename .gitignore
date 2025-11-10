@@ -4,3 +4,5 @@ dist/
 .vscode/
 .DS_Store
 coverage/
+.cursor
+POSTMAN_GUIDE.md

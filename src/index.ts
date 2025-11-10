@@ -8,6 +8,8 @@
  * Errors during start are logged and the promise is rejected to avoid
  * a partially initialized process.
  */
+// Import type declarations to register Express Request extensions globally
+import './types/express';
 import app from './app';
 import connectDb from './db/mongoose';
 

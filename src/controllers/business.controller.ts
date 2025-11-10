@@ -72,8 +72,7 @@ export const logout = async (req: Request, res: Response) => {
 };
 
 export const me = (req: Request, res: Response) => {
-    const anyReq = req as any;
-    const biz = anyReq.business;
+    const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
     return res.json({ id: biz.id, name: biz.name, email: biz.email, createdAt: biz.createdAt });
 };

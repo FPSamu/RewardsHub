@@ -103,9 +103,7 @@ export const logout = async (req: Request, res: Response) => {
  * The `authenticate` middleware injects `req.user` (public user object).
  */
 export const me = (req: Request, res: Response) => {
-    // user injected by middleware
-    const anyReq = req as any;
-    const user = anyReq.user;
+    const user = req.user;
     if (!user) return res.status(401).json({ message: 'not authenticated' });
     return res.json({ id: user.id, username: user.username, email: user.email, createdAt: user.createdAt });
 };

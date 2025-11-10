@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import businessRoutes from './routes/business.routes';
+import rewardRoutes from './routes/reward.routes';
 
 dotenv.config();
 
@@ -33,5 +34,6 @@ app.get('/', (req, res) => {
  */
 app.use('/auth', authRoutes);
 app.use('/business', businessRoutes);
+app.use('/rewards', rewardRoutes);
 
 export default app;

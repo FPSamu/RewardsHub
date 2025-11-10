@@ -14,7 +14,7 @@ export const authenticate: RequestHandler = async (req, res, next) => {
         const user = await userService.findUserById(userId);
         if (!user) return res.status(401).json({ message: 'invalid token' });
         // attach user to request so controllers can use it
-        (req as any).user = user;
+        req.user = user;
         return next();
     } catch (err) {
         return res.status(401).json({ message: 'invalid token' });

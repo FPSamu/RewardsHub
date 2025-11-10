@@ -13,7 +13,7 @@ export const authenticateBusiness: RequestHandler = async (req, res, next) => {
         const bizId = payload.sub as string;
         const biz = await businessService.findBusinessById(bizId);
         if (!biz) return res.status(401).json({ message: 'invalid token' });
-        (req as any).business = biz;
+        req.business = biz;
         return next();
     } catch (err) {
         return res.status(401).json({ message: 'invalid token' });
