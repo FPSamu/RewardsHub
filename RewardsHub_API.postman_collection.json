@@ -1,0 +1,464 @@
+{
+	"info": {
+		"_postman_id": "rewardshub-api-collection",
+		"name": "RewardsHub API",
+		"description": "Colección completa de endpoints para el API de RewardsHub",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register Business",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const jsonData = pm.response.json();",
+									"    pm.environment.set(\"business_token\", jsonData.token);",
+									"    pm.environment.set(\"business_id\", jsonData.business.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Mi Negocio de Prueba\",\n  \"email\": \"negocio@test.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/business/register",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"business",
+								"register"
+							]
+						}
+					}
+				},
+				{
+					"name": "Login Business",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const jsonData = pm.response.json();",
+									"    pm.environment.set(\"business_token\", jsonData.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"negocio@test.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/business/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"business",
+								"login"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Rewards - Points",
+			"item": [
+				{
+					"name": "Create Points Reward",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const jsonData = pm.response.json();",
+									"    pm.environment.set(\"reward_id\", jsonData.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Sistema de Puntos\",\n  \"description\": \"Gana puntos por cada compra y canjéalos por recompensas\",\n  \"pointsConversion\": {\n    \"amount\": 10,\n    \"currency\": \"MXN\",\n    \"points\": 1\n  },\n  \"pointsRewards\": [\n    {\n      \"pointsRequired\": 100,\n      \"rewardType\": \"discount\",\n      \"rewardValue\": 10,\n      \"description\": \"10% de descuento en tu próxima compra\"\n    },\n    {\n      \"pointsRequired\": 500,\n      \"rewardType\": \"free_product\",\n      \"rewardValue\": \"producto_gratis_123\",\n      \"description\": \"Producto gratis\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/rewards/points",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"points"
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Points Reward",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Sistema de Puntos Actualizado\",\n  \"pointsConversion\": {\n    \"amount\": 20,\n    \"currency\": \"MXN\",\n    \"points\": 2\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/rewards/points/{{reward_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"points",
+								"{{reward_id}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Rewards - Stamps",
+			"item": [
+				{
+					"name": "Create Stamps Reward - Specific",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const jsonData = pm.response.json();",
+									"    pm.environment.set(\"reward_id\", jsonData.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Bebidas Gratis\",\n  \"description\": \"Compra 10 bebidas y obtén 1 gratis\",\n  \"targetStamps\": 10,\n  \"productType\": \"specific\",\n  \"productIdentifier\": \"bebida_coca_cola\",\n  \"stampReward\": {\n    \"rewardType\": \"free_product\",\n    \"rewardValue\": \"bebida_coca_cola\",\n    \"description\": \"1 Bebida Coca Cola gratis\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/rewards/stamps",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"stamps"
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Stamps Reward - General",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Descuento en Bebidas\",\n  \"description\": \"Compra 5 bebidas de cualquier tipo y obtén 20% de descuento\",\n  \"targetStamps\": 5,\n  \"productType\": \"general\",\n  \"stampReward\": {\n    \"rewardType\": \"discount\",\n    \"rewardValue\": 20,\n    \"description\": \"20% de descuento en tu próxima compra\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/rewards/stamps",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"stamps"
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Stamps Reward - Any",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Cupón de Descuento\",\n  \"description\": \"Compra 8 productos y obtén un cupón\",\n  \"targetStamps\": 8,\n  \"productType\": \"any\",\n  \"stampReward\": {\n    \"rewardType\": \"coupon\",\n    \"rewardValue\": \"DESCUENTO20\",\n    \"description\": \"Cupón de descuento del 20%\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/rewards/stamps",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"stamps"
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Stamps Reward",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Bebidas Gratis Actualizado\",\n  \"targetStamps\": 15\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/rewards/stamps/{{reward_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"stamps",
+								"{{reward_id}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Rewards - General",
+			"item": [
+				{
+					"name": "List All Rewards",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rewards",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards"
+							]
+						}
+					}
+				},
+				{
+					"name": "List All Rewards (Include Inactive)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rewards?includeInactive=true",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards"
+							],
+							"query": [
+								{
+									"key": "includeInactive",
+									"value": "true"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Reward by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rewards/{{reward_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"{{reward_id}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Delete Reward (Soft Delete)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rewards/{{reward_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"{{reward_id}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Delete Reward (Hard Delete)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rewards/{{reward_id}}?hardDelete=true",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rewards",
+								"{{reward_id}}"
+							],
+							"query": [
+								{
+									"key": "hardDelete",
+									"value": "true"
+								}
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "business_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "business_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "reward_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
+
