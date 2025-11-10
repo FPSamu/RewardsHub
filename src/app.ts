@@ -1,0 +1,37 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import dotenv from 'dotenv';
+import authRoutes from './routes/auth.routes';
+import businessRoutes from './routes/business.routes';
+
+dotenv.config();
+
+const app = express();
+
+app.use(helmet());
+app.use(cors());
+app.use(morgan('dev'));
+app.use(express.json());
+
+/**
+ * Health endpoint useful for readiness/liveness checks.
+ */
+app.get('/health', (_req, res) => {
+    res.json({ status: 'ok' });
+});
+
+app.get('/', (req, res) => {
+    res.send('Server Working!');
+})
+/**
+ * Mount authentication routes under /auth
+ * - POST /auth/register
+ * - POST /auth/login
+ * - GET  /auth/me (protected)
+ */
+app.use('/auth', authRoutes);
+app.use('/business', businessRoutes);
+
+export default app;
