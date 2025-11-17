@@ -16,7 +16,10 @@ import { authenticateBusiness } from '../middleware/business.middleware';
 
 const router = Router();
 
-// All routes require business authentication
+// Public route: Get reward systems by business ID (for clients)
+router.get('/business/:businessId', rewardCtrl.getRewardsByBusinessId);
+
+// All routes below require business authentication
 router.use(authenticateBusiness);
 
 // Create reward systems

@@ -17,6 +17,9 @@ const router = Router();
 // Business endpoint: Add points/stamps to a user
 router.post('/add', authenticateBusiness, userPointsCtrl.addPointsOrStamps);
 
+// Business endpoint: Get all users with points/stamps at this business
+router.get('/business-users', authenticateBusiness, userPointsCtrl.getAllUsersForBusiness);
+
 // User endpoint: Get own points
 router.get('/', authenticate, userPointsCtrl.getUserPoints);
 

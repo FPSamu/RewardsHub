@@ -178,6 +178,28 @@ export const getUserPointsForBusiness = async (req: Request, res: Response) => {
 };
 
 /**
+ * Get all users that have points/stamps at the authenticated business.
+ * This endpoint is for businesses to see all their customers with points/stamps.
+ */
+export const getAllUsersForBusiness = async (req: Request, res: Response) => {
+    const business = req.business;
+    if (!business) {
+        return res.status(401).json({ message: 'not authenticated' });
+    }
+
+    try {
+        const users = await userPointsService.getAllUsersForBusiness(business.id);
+        return res.status(200).json({
+            businessId: business.id,
+            totalUsers: users.length,
+            users,
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'failed to get users for business' });
+    }
+};
+
+/**
  * Get authenticated user's points for a specific business.
  * This endpoint allows users to check their own points at a specific business.
  */

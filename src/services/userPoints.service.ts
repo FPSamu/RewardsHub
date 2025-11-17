@@ -308,3 +308,45 @@ export const getUserPointsForBusiness = async (
     };
 };
 
+/**
+ * Get all users that have points/stamps at a specific business.
+ * @param businessId - The business ID
+ * @returns Array of user points with business points filtered
+ */
+export const getAllUsersForBusiness = async (businessId: string): Promise<Array<{
+    userId: string;
+    businessPoints: PublicBusinessPoints;
+}>> => {
+    const docs = await UserPointsModel.find({
+        'businessPoints.businessId': new Types.ObjectId(businessId),
+    }).exec();
+
+    const results = docs.map((doc) => {
+        const businessPoints = doc.businessPoints.find(
+            (bp) => bp.businessId.toString() === businessId
+        );
+
+        if (!businessPoints) {
+            return null;
+        }
+
+        return {
+            userId: doc.userId.toString(),
+            businessPoints: {
+                businessId: businessPoints.businessId.toString(),
+                points: businessPoints.points,
+                stamps: businessPoints.stamps,
+                lastVisit: businessPoints.lastVisit.toISOString(),
+                rewardSystems: businessPoints.rewardSystems.map((rs) => ({
+                    rewardSystemId: rs.rewardSystemId.toString(),
+                    points: rs.points,
+                    stamps: rs.stamps,
+                    lastUpdated: rs.lastUpdated.toISOString(),
+                })),
+            },
+        };
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+    return results;
+};
+

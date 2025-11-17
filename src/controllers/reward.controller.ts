@@ -298,3 +298,27 @@ export const deleteReward = async (req: Request, res: Response) => {
     }
 };
 
+/**
+ * Get all reward systems for a specific business by businessId.
+ * Public endpoint - no authentication required.
+ * This allows clients to see available rewards at businesses.
+ * Query params:
+ * - includeInactive: boolean (default: false)
+ */
+export const getRewardsByBusinessId = async (req: Request, res: Response) => {
+    const { businessId } = req.params;
+
+    if (!businessId) {
+        return res.status(400).json({ message: 'businessId is required' });
+    }
+
+    const includeInactive = req.query.includeInactive === 'true';
+
+    try {
+        const rewards = await rewardService.findRewardsByBusinessId(businessId, includeInactive);
+        return res.json(rewards);
+    } catch (error) {
+        return res.status(500).json({ message: 'failed to fetch reward systems' });
+    }
+};
+
