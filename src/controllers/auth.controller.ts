@@ -107,3 +107,33 @@ export const me = (req: Request, res: Response) => {
     if (!user) return res.status(401).json({ message: 'not authenticated' });
     return res.json({ id: user.id, username: user.username, email: user.email, createdAt: user.createdAt });
 };
+
+/**
+ * Get user information by ID.
+ * Public endpoint for viewing user profiles.
+ */
+export const getUserById = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    
+    if (!id) {
+        return res.status(400).json({ message: 'user id is required' });
+    }
+
+    try {
+        const user = await userService.findUserById(id);
+        
+        if (!user) {
+            return res.status(404).json({ message: 'user not found' });
+        }
+
+        // Return only public information (no passHash)
+        return res.json({
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            createdAt: user.createdAt
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'failed to get user information' });
+    }
+};

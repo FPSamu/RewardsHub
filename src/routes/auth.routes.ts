@@ -20,4 +20,7 @@ router.get('/me', authenticate, authCtrl.me);
 router.post('/refresh', authCtrl.refresh);
 router.post('/logout', authCtrl.logout);
 
+// Get user by ID (public)
+router.get('/:id', authCtrl.getUserById);
+
 export default router;
