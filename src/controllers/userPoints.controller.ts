@@ -9,13 +9,11 @@ import * as rewardService from '../services/reward.service';
 import * as userService from '../services/user.service';
 
 /**
- * Add points or stamps to a user after a purchase.
+ * Add points and/or stamps to a user after a purchase.
  * Expects:
  * - userId: string (from scanned QR code)
- * - rewardSystemId: string (the reward system to use)
- * - purchaseAmount?: number (for points systems)
- * - stampsCount?: number (for stamps systems)
- * - productIdentifier?: string (optional, for validating specific product stamps)
+ * - purchaseAmount?: number (for points calculation, if business has points system)
+ * - stampData?: { rewardSystemId: string, stampsCount: number, productIdentifier?: string }[] (for stamps, if business has stamp systems)
  */
 export const addPointsOrStamps = async (req: Request, res: Response) => {
     const business = req.business;
@@ -23,12 +21,14 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'not authenticated' });
     }
 
-    const { userId, rewardSystemId, purchaseAmount, stampsCount, productIdentifier } = req.body as {
+    const { userId, purchaseAmount, stampData } = req.body as {
         userId?: string;
-        rewardSystemId?: string;
         purchaseAmount?: number;
-        stampsCount?: number;
-        productIdentifier?: string;
+        stampData?: Array<{
+            rewardSystemId: string;
+            stampsCount: number;
+            productIdentifier?: string;
+        }>;
     };
 
     // Validate required fields
@@ -36,8 +36,8 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'userId is required' });
     }
 
-    if (!rewardSystemId) {
-        return res.status(400).json({ message: 'rewardSystemId is required' });
+    if (!purchaseAmount && (!stampData || stampData.length === 0)) {
+        return res.status(400).json({ message: 'either purchaseAmount or stampData is required' });
     }
 
     // Validate user exists
@@ -46,48 +46,66 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(404).json({ message: 'user not found' });
     }
 
-    // Get reward system and verify it belongs to the business
-    const rewardSystem = await rewardService.findRewardByIdAndBusinessId(rewardSystemId, business.id);
-    if (!rewardSystem) {
-        return res.status(404).json({ message: 'reward system not found or does not belong to this business' });
-    }
-
-    if (!rewardSystem.isActive) {
-        return res.status(400).json({ message: 'reward system is not active' });
-    }
-
-    // Validate system type and required fields
-    if (rewardSystem.type === 'points') {
-        if (purchaseAmount === undefined || purchaseAmount <= 0) {
-            return res.status(400).json({ message: 'purchaseAmount is required and must be greater than 0 for points systems' });
-        }
-    } else if (rewardSystem.type === 'stamps') {
-        if (stampsCount === undefined || stampsCount <= 0) {
-            return res.status(400).json({ message: 'stampsCount is required and must be greater than 0 for stamps systems' });
-        }
-
-        // Validate product identifier for specific product types
-        if (rewardSystem.productType === 'specific') {
-            if (!productIdentifier) {
-                return res.status(400).json({ message: 'productIdentifier is required for specific product stamp systems' });
-            }
-            if (productIdentifier !== rewardSystem.productIdentifier) {
-                return res.status(400).json({ message: 'productIdentifier does not match the reward system configuration' });
-            }
-        }
-    }
-
     try {
-        const updatedUserPoints = await userPointsService.addPointsOrStamps(
+        // Process points if purchaseAmount is provided
+        let pointsSystem = null;
+        if (purchaseAmount && purchaseAmount > 0) {
+            // Find active points reward system for this business
+            const allRewardSystems = await rewardService.findRewardsByBusinessId(business.id);
+            pointsSystem = allRewardSystems.find(rs => rs.type === 'points' && rs.isActive);
+            
+            if (!pointsSystem) {
+                return res.status(400).json({ message: 'no active points system found for this business' });
+            }
+        }
+
+        // Process stamps if stampData is provided
+        let stampSystems: Array<{ system: any, count: number }> = [];
+        if (stampData && stampData.length > 0) {
+            for (const stamp of stampData) {
+                if (!stamp.rewardSystemId || stamp.stampsCount === undefined || stamp.stampsCount <= 0) {
+                    return res.status(400).json({ message: 'invalid stamp data: rewardSystemId and stampsCount are required' });
+                }
+
+                // Get and validate stamp reward system
+                const stampSystem = await rewardService.findRewardByIdAndBusinessId(stamp.rewardSystemId, business.id);
+                if (!stampSystem) {
+                    return res.status(404).json({ message: `stamp reward system ${stamp.rewardSystemId} not found or does not belong to this business` });
+                }
+
+                if (!stampSystem.isActive) {
+                    return res.status(400).json({ message: `stamp reward system ${stampSystem.name} is not active` });
+                }
+
+                if (stampSystem.type !== 'stamps') {
+                    return res.status(400).json({ message: `reward system ${stampSystem.name} is not a stamps system` });
+                }
+
+                // Validate product identifier for specific product types
+                if (stampSystem.productType === 'specific') {
+                    if (!stamp.productIdentifier) {
+                        return res.status(400).json({ message: `productIdentifier is required for stamp system ${stampSystem.name}` });
+                    }
+                    if (stamp.productIdentifier !== stampSystem.productIdentifier) {
+                        return res.status(400).json({ message: `productIdentifier does not match stamp system ${stampSystem.name} configuration` });
+                    }
+                }
+
+                stampSystems.push({ system: stampSystem, count: stamp.stampsCount });
+            }
+        }
+
+        // Add points and stamps
+        const updatedUserPoints = await userPointsService.addPointsAndStamps(
             userId,
             business.id,
-            rewardSystem,
+            pointsSystem,
             purchaseAmount,
-            stampsCount
+            stampSystems
         );
 
         return res.status(200).json({
-            message: 'Points/stamps added successfully',
+            message: 'Points and/or stamps added successfully',
             userPoints: updatedUserPoints,
         });
     } catch (error: any) {

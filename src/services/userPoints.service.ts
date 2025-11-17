@@ -69,52 +69,68 @@ export const calculatePoints = (purchaseAmount: number, pointsConversion: { amou
 };
 
 /**
- * Add points to a user for a specific business and reward system.
+ * Add points and/or stamps to a user for a specific business.
  * @param userId - The user ID
  * @param businessId - The business ID
- * @param rewardSystem - The reward system (must belong to the business)
+ * @param pointsSystem - The points reward system (null if not adding points)
  * @param purchaseAmount - The purchase amount (for points calculation)
- * @param stampsCount - The number of stamps to add (for stamps systems)
+ * @param stampSystems - Array of stamp systems with their counts
  * @returns Updated public user points object
  */
-export const addPointsOrStamps = async (
+export const addPointsAndStamps = async (
     userId: string,
     businessId: string,
-    rewardSystem: PublicReward,
+    pointsSystem: PublicReward | null,
     purchaseAmount?: number,
-    stampsCount?: number
+    stampSystems?: Array<{ system: PublicReward, count: number }>
 ): Promise<PublicUserPoints> => {
-    // Verify reward system belongs to business
-    if (rewardSystem.businessId !== businessId) {
-        throw new Error('Reward system does not belong to the specified business');
-    }
-
-    if (!rewardSystem.isActive) {
-        throw new Error('Reward system is not active');
-    }
-
-    // Calculate points if it's a points system and purchaseAmount is provided
+    // Calculate points if points system is provided
     let pointsToAdd = 0;
-    if (rewardSystem.type === 'points' && purchaseAmount !== undefined) {
-        if (!rewardSystem.pointsConversion) {
+    let pointsSystemIdObj: Types.ObjectId | null = null;
+    
+    if (pointsSystem && purchaseAmount !== undefined && purchaseAmount > 0) {
+        if (pointsSystem.businessId !== businessId) {
+            throw new Error('Points system does not belong to the specified business');
+        }
+        if (!pointsSystem.isActive) {
+            throw new Error('Points system is not active');
+        }
+        if (!pointsSystem.pointsConversion) {
             throw new Error('Points conversion not configured for this reward system');
         }
-        pointsToAdd = calculatePoints(purchaseAmount, rewardSystem.pointsConversion);
+        pointsToAdd = calculatePoints(purchaseAmount, pointsSystem.pointsConversion);
+        pointsSystemIdObj = new Types.ObjectId(pointsSystem.id);
     }
 
-    // Use stampsCount if it's a stamps system
-    let stampsToAdd = 0;
-    if (rewardSystem.type === 'stamps' && stampsCount !== undefined) {
-        stampsToAdd = stampsCount;
+    // Validate stamp systems
+    const validatedStampSystems: Array<{ id: Types.ObjectId, count: number }> = [];
+    let totalStampsToAdd = 0;
+    
+    if (stampSystems && stampSystems.length > 0) {
+        for (const { system, count } of stampSystems) {
+            if (system.businessId !== businessId) {
+                throw new Error(`Stamp system ${system.name} does not belong to the specified business`);
+            }
+            if (!system.isActive) {
+                throw new Error(`Stamp system ${system.name} is not active`);
+            }
+            if (count <= 0) {
+                throw new Error(`Invalid stamp count for system ${system.name}`);
+            }
+            validatedStampSystems.push({
+                id: new Types.ObjectId(system.id),
+                count
+            });
+            totalStampsToAdd += count;
+        }
     }
 
-    if (pointsToAdd === 0 && stampsToAdd === 0) {
+    if (pointsToAdd === 0 && totalStampsToAdd === 0) {
         throw new Error('No points or stamps to add');
     }
 
     const userIdObj = new Types.ObjectId(userId);
     const businessIdObj = new Types.ObjectId(businessId);
-    const rewardSystemIdObj = new Types.ObjectId(rewardSystem.id);
 
     // Find or create user points document
     let userPoints = await UserPointsModel.findOne({ userId: userIdObj }).exec();
@@ -134,46 +150,84 @@ export const addPointsOrStamps = async (
 
     if (businessIndex === -1) {
         // Create new business entry
+        const newRewardSystems: IRewardSystemPoints[] = [];
+        
+        // Add points system if applicable
+        if (pointsSystemIdObj && pointsToAdd > 0) {
+            newRewardSystems.push({
+                rewardSystemId: pointsSystemIdObj,
+                points: pointsToAdd,
+                stamps: 0,
+                lastUpdated: new Date(),
+            });
+        }
+        
+        // Add stamp systems
+        for (const { id, count } of validatedStampSystems) {
+            newRewardSystems.push({
+                rewardSystemId: id,
+                points: 0,
+                stamps: count,
+                lastUpdated: new Date(),
+            });
+        }
+        
         userPoints.businessPoints.push({
             businessId: businessIdObj,
             points: pointsToAdd,
-            stamps: stampsToAdd,
+            stamps: totalStampsToAdd,
             lastVisit: new Date(),
-            rewardSystems: [
-                {
-                    rewardSystemId: rewardSystemIdObj,
-                    points: pointsToAdd,
-                    stamps: stampsToAdd,
-                    lastUpdated: new Date(),
-                },
-            ],
+            rewardSystems: newRewardSystems,
         });
     } else {
         // Update existing business entry
         const businessPoints = userPoints.businessPoints[businessIndex];
         businessPoints.points += pointsToAdd;
-        businessPoints.stamps += stampsToAdd;
+        businessPoints.stamps += totalStampsToAdd;
         businessPoints.lastVisit = new Date();
 
-        // Find or create reward system entry
-        const rewardSystemIndex = businessPoints.rewardSystems.findIndex(
-            (rs) => rs.rewardSystemId.toString() === rewardSystemIdObj.toString()
-        );
+        // Update or create points system entry
+        if (pointsSystemIdObj && pointsToAdd > 0) {
+            const pointsSystemIndex = businessPoints.rewardSystems.findIndex(
+                (rs) => rs.rewardSystemId.toString() === pointsSystemIdObj!.toString()
+            );
 
-        if (rewardSystemIndex === -1) {
-            // Create new reward system entry
-            businessPoints.rewardSystems.push({
-                rewardSystemId: rewardSystemIdObj,
-                points: pointsToAdd,
-                stamps: stampsToAdd,
-                lastUpdated: new Date(),
-            });
-        } else {
-            // Update existing reward system entry
-            const rewardSystemPoints = businessPoints.rewardSystems[rewardSystemIndex];
-            rewardSystemPoints.points += pointsToAdd;
-            rewardSystemPoints.stamps += stampsToAdd;
-            rewardSystemPoints.lastUpdated = new Date();
+            if (pointsSystemIndex === -1) {
+                // Create new points system entry
+                businessPoints.rewardSystems.push({
+                    rewardSystemId: pointsSystemIdObj,
+                    points: pointsToAdd,
+                    stamps: 0,
+                    lastUpdated: new Date(),
+                });
+            } else {
+                // Update existing points system entry
+                const pointsSystemPoints = businessPoints.rewardSystems[pointsSystemIndex];
+                pointsSystemPoints.points += pointsToAdd;
+                pointsSystemPoints.lastUpdated = new Date();
+            }
+        }
+
+        // Update or create stamp system entries
+        for (const { id, count } of validatedStampSystems) {
+            const stampSystemIndex = businessPoints.rewardSystems.findIndex(
+                (rs) => rs.rewardSystemId.toString() === id.toString()
+            );
+
+            if (stampSystemIndex === -1) {
+                // Create new stamp system entry
+                businessPoints.rewardSystems.push({
+                    rewardSystemId: id,
+                    points: 0,
+                    stamps: count,
+                    lastUpdated: new Date(),
+                });
+            } else {
+                // Update existing stamp system entry
+                const stampSystemPoints = businessPoints.rewardSystems[stampSystemIndex];
+                stampSystemPoints.stamps += count;
+                stampSystemPoints.lastUpdated = new Date();
+            }
         }
     }
 
@@ -184,6 +238,23 @@ export const addPointsOrStamps = async (
     await userPoints.save();
 
     return toPublic(userPoints as IUserPoints);
+};
+
+/**
+ * Legacy function for backward compatibility - now calls addPointsAndStamps
+ * @deprecated Use addPointsAndStamps instead
+ */
+export const addPointsOrStamps = async (
+    userId: string,
+    businessId: string,
+    rewardSystem: PublicReward,
+    purchaseAmount?: number,
+    stampsCount?: number
+): Promise<PublicUserPoints> => {
+    const pointsSystem = rewardSystem.type === 'points' ? rewardSystem : null;
+    const stampSystems = rewardSystem.type === 'stamps' ? [{ system: rewardSystem, count: stampsCount || 0 }] : undefined;
+    
+    return addPointsAndStamps(userId, businessId, pointsSystem, purchaseAmount, stampSystems);
 };
 
 /**

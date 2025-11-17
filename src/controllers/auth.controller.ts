@@ -53,7 +53,7 @@ export const login = async (req: Request, res: Response) => {
     const accessToken = (jwt as any).sign({ sub: user.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await userService.addRefreshToken(user.id, refreshToken);
-    return res.json({ token: accessToken, refreshToken });
+    return res.json({ user: { id: user.id, username: user.username, email: user.email, createdAt: user.createdAt }, token: accessToken, refreshToken });
 };
 
 /**

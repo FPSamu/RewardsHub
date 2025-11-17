@@ -76,3 +76,27 @@ export const me = (req: Request, res: Response) => {
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
     return res.json({ id: biz.id, name: biz.name, email: biz.email, createdAt: biz.createdAt });
 };
+
+export const getBusinessById = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    
+    if (!id) {
+        return res.status(400).json({ message: 'business id is required' });
+    }
+
+    try {
+        const business = await businessService.findBusinessById(id);
+        
+        if (!business) {
+            return res.status(404).json({ message: 'business not found' });
+        }
+
+        // Return only public information (no passHash)
+        return res.json({
+            id: business.id,
+            name: business.name,
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'failed to get business information' });
+    }
+};

@@ -11,6 +11,7 @@ export interface IBusiness extends Document {
     name: string;
     email: string;
     passHash: string;
+    status: 'active' | 'inactive';
     createdAt: Date;
     refreshTokens?: string[];
 }
@@ -20,6 +21,7 @@ const businessSchema = new Schema<IBusiness>(
         name: { type: String, required: true },
         email: { type: String, required: true, unique: true, index: true },
         passHash: { type: String, required: true },
+        status: { type: String, enum: ['active', 'inactive'], default: 'inactive' },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
     },
