@@ -9,6 +9,13 @@ router.post('/login', businessCtrl.login);
 router.get('/me', authenticateBusiness, businessCtrl.me);
 router.post('/refresh', businessCtrl.refresh);
 router.post('/logout', businessCtrl.logout);
+
+// Location endpoints
+router.put('/location', authenticateBusiness, businessCtrl.updateLocation);
+router.put('/coordinates', authenticateBusiness, businessCtrl.updateCoordinates);
+router.get('/nearby', businessCtrl.getNearbyBusinesses);
+
+// Get business by ID (must be last to avoid route conflicts)
 router.get('/:id', businessCtrl.getBusinessById);
 
 export default router;

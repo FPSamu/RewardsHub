@@ -1,4 +1,5 @@
 import { User } from '../models/user';
+import { ILocation } from '../models/business.model';
 
 /**
  * Business DTO interface (matches the structure returned by business service)
@@ -8,6 +9,9 @@ export interface Business {
     name: string;
     email: string;
     passHash: string;
+    status: 'active' | 'inactive';
+    address?: string;
+    location?: ILocation;
     createdAt: string;
 }
 

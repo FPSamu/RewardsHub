@@ -6,15 +6,34 @@
  */
 import { Schema, model, Document } from 'mongoose';
 
+export interface ILocation {
+    address: string; // Format: calle-numero-ciudad-estado-pais
+    latitude: number;
+    longitude: number;
+    formattedAddress?: string;
+}
+
 export interface IBusiness extends Document {
     _id: any;
     name: string;
     email: string;
     passHash: string;
     status: 'active' | 'inactive';
+    address?: string; // Format: calle-numero-ciudad-estado-pais
+    location?: ILocation;
     createdAt: Date;
     refreshTokens?: string[];
 }
+
+const locationSchema = new Schema<ILocation>(
+    {
+        address: { type: String, required: true },
+        latitude: { type: Number, required: true },
+        longitude: { type: Number, required: true },
+        formattedAddress: { type: String },
+    },
+    { _id: false }
+);
 
 const businessSchema = new Schema<IBusiness>(
     {
@@ -22,11 +41,16 @@ const businessSchema = new Schema<IBusiness>(
         email: { type: String, required: true, unique: true, index: true },
         passHash: { type: String, required: true },
         status: { type: String, enum: ['active', 'inactive'], default: 'inactive' },
+        address: { type: String },
+        location: { type: locationSchema },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
     },
     { timestamps: false }
 );
+
+// Geospatial index for location-based queries
+businessSchema.index({ 'location.latitude': 1, 'location.longitude': 1 });
 
 businessSchema.virtual('id').get(function (this: IBusiness) {
     return this._id.toString();
