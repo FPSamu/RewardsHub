@@ -1,14 +1,14 @@
 /**
  * Reward routes
  *
- * Exposes routes for managing reward systems:
- * - POST   /rewards/points      -> create a points-based reward system (protected)
- * - POST   /rewards/stamps      -> create a stamps-based reward system (protected)
- * - GET    /rewards              -> get all reward systems for the business (protected)
- * - GET    /rewards/:id          -> get a specific reward system (protected)
- * - PUT    /rewards/points/:id   -> update a points-based reward system (protected)
- * - PUT    /rewards/stamps/:id   -> update a stamps-based reward system (protected)
- * - DELETE /rewards/:id          -> delete a reward system (protected)
+ * Exposes routes for managing individual rewards:
+ * - POST   /rewards              -> create a reward (protected)
+ * - GET    /rewards              -> get all rewards for the business (protected)
+ * - GET    /rewards/system/:systemId -> get all rewards for a specific system (protected)
+ * - GET    /rewards/:id          -> get a specific reward (protected)
+ * - PUT    /rewards/:id          -> update a reward (protected)
+ * - DELETE /rewards/:id          -> delete a reward (protected)
+ * - GET    /rewards/business/:businessId -> get rewards by business ID (public)
  */
 import { Router } from 'express';
 import * as rewardCtrl from '../controllers/reward.controller';
@@ -16,25 +16,24 @@ import { authenticateBusiness } from '../middleware/business.middleware';
 
 const router = Router();
 
-// Public route: Get reward systems by business ID (for clients)
+// Public route: Get rewards by business ID (for clients)
 router.get('/business/:businessId', rewardCtrl.getRewardsByBusinessId);
 
 // All routes below require business authentication
 router.use(authenticateBusiness);
 
-// Create reward systems
-router.post('/points', rewardCtrl.createPointsReward);
-router.post('/stamps', rewardCtrl.createStampsReward);
+// Create reward
+router.post('/', rewardCtrl.createReward);
 
-// Get reward systems
+// Get rewards
 router.get('/', rewardCtrl.getRewards);
+router.get('/system/:systemId', rewardCtrl.getRewardsBySystemId);
 router.get('/:id', rewardCtrl.getRewardById);
 
-// Update reward systems
-router.put('/points/:id', rewardCtrl.updatePointsReward);
-router.put('/stamps/:id', rewardCtrl.updateStampsReward);
+// Update reward
+router.put('/:id', rewardCtrl.updateReward);
 
-// Delete reward systems
+// Delete reward
 router.delete('/:id', rewardCtrl.deleteReward);
 
 export default router;

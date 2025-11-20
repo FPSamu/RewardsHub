@@ -5,7 +5,7 @@
  */
 import { Request, Response } from 'express';
 import * as userPointsService from '../services/userPoints.service';
-import * as rewardService from '../services/reward.service';
+import * as systemService from '../services/system.service';
 import * as userService from '../services/user.service';
 
 /**
@@ -50,9 +50,9 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         // Process points if purchaseAmount is provided
         let pointsSystem = null;
         if (purchaseAmount && purchaseAmount > 0) {
-            // Find active points reward system for this business
-            const allRewardSystems = await rewardService.findRewardsByBusinessId(business.id);
-            pointsSystem = allRewardSystems.find(rs => rs.type === 'points' && rs.isActive);
+            // Find active points system for this business
+            const allSystems = await systemService.findSystemsByBusinessId(business.id);
+            pointsSystem = allSystems.find(sys => sys.type === 'points' && sys.isActive);
             
             if (!pointsSystem) {
                 return res.status(400).json({ message: 'no active points system found for this business' });
@@ -64,21 +64,21 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         if (stampData && stampData.length > 0) {
             for (const stamp of stampData) {
                 if (!stamp.rewardSystemId || stamp.stampsCount === undefined || stamp.stampsCount <= 0) {
-                    return res.status(400).json({ message: 'invalid stamp data: rewardSystemId and stampsCount are required' });
+                    return res.status(400).json({ message: 'invalid stamp data: systemId and stampsCount are required' });
                 }
 
-                // Get and validate stamp reward system
-                const stampSystem = await rewardService.findRewardByIdAndBusinessId(stamp.rewardSystemId, business.id);
+                // Get and validate stamp system
+                const stampSystem = await systemService.findSystemByIdAndBusinessId(stamp.rewardSystemId, business.id);
                 if (!stampSystem) {
-                    return res.status(404).json({ message: `stamp reward system ${stamp.rewardSystemId} not found or does not belong to this business` });
+                    return res.status(404).json({ message: `stamp system ${stamp.rewardSystemId} not found or does not belong to this business` });
                 }
 
                 if (!stampSystem.isActive) {
-                    return res.status(400).json({ message: `stamp reward system ${stampSystem.name} is not active` });
+                    return res.status(400).json({ message: `stamp system ${stampSystem.name} is not active` });
                 }
 
                 if (stampSystem.type !== 'stamps') {
-                    return res.status(400).json({ message: `reward system ${stampSystem.name} is not a stamps system` });
+                    return res.status(400).json({ message: `system ${stampSystem.name} is not a stamps system` });
                 }
 
                 // Validate product identifier for specific product types

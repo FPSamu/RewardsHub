@@ -5,7 +5,7 @@
  */
 import { UserPointsModel, IUserPoints, IBusinessPoints, IRewardSystemPoints } from '../models/userPoints.model';
 import { Types } from 'mongoose';
-import { PublicReward } from './reward.service';
+import { PublicSystem } from './system.service';
 
 /**
  * Public user points object interface (without Mongoose internals)
@@ -72,7 +72,7 @@ export const calculatePoints = (purchaseAmount: number, pointsConversion: { amou
  * Add points and/or stamps to a user for a specific business.
  * @param userId - The user ID
  * @param businessId - The business ID
- * @param pointsSystem - The points reward system (null if not adding points)
+ * @param pointsSystem - The points system (null if not adding points)
  * @param purchaseAmount - The purchase amount (for points calculation)
  * @param stampSystems - Array of stamp systems with their counts
  * @returns Updated public user points object
@@ -80,9 +80,9 @@ export const calculatePoints = (purchaseAmount: number, pointsConversion: { amou
 export const addPointsAndStamps = async (
     userId: string,
     businessId: string,
-    pointsSystem: PublicReward | null,
+    pointsSystem: PublicSystem | null,
     purchaseAmount?: number,
-    stampSystems?: Array<{ system: PublicReward, count: number }>
+    stampSystems?: Array<{ system: PublicSystem, count: number }>
 ): Promise<PublicUserPoints> => {
     // Calculate points if points system is provided
     let pointsToAdd = 0;
@@ -96,7 +96,7 @@ export const addPointsAndStamps = async (
             throw new Error('Points system is not active');
         }
         if (!pointsSystem.pointsConversion) {
-            throw new Error('Points conversion not configured for this reward system');
+            throw new Error('Points conversion not configured for this system');
         }
         pointsToAdd = calculatePoints(purchaseAmount, pointsSystem.pointsConversion);
         pointsSystemIdObj = new Types.ObjectId(pointsSystem.id);
@@ -247,12 +247,12 @@ export const addPointsAndStamps = async (
 export const addPointsOrStamps = async (
     userId: string,
     businessId: string,
-    rewardSystem: PublicReward,
+    system: PublicSystem,
     purchaseAmount?: number,
     stampsCount?: number
 ): Promise<PublicUserPoints> => {
-    const pointsSystem = rewardSystem.type === 'points' ? rewardSystem : null;
-    const stampSystems = rewardSystem.type === 'stamps' ? [{ system: rewardSystem, count: stampsCount || 0 }] : undefined;
+    const pointsSystem = system.type === 'points' ? system : null;
+    const stampSystems = system.type === 'stamps' ? [{ system: system, count: stampsCount || 0 }] : undefined;
     
     return addPointsAndStamps(userId, businessId, pointsSystem, purchaseAmount, stampSystems);
 };

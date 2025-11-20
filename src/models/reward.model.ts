@@ -1,161 +1,78 @@
 /**
  * Mongoose Reward model
  *
- * This module defines the schema and the typed interface for reward system documents.
- * Supports two types of reward systems: points-based and stamps-based.
+ * This module defines the schema for individual rewards that can be redeemed.
+ * Rewards are linked to a System (points or stamps).
  */
 import { Schema, model, Document, Types } from 'mongoose';
 
 /**
- * Reward type for points-based systems
- */
-export interface IPointsReward {
-    pointsRequired: number;
-    rewardType: 'discount' | 'free_product' | 'coupon' | 'cashback';
-    rewardValue: number | string; // Can be percentage, amount, or product identifier
-    description: string;
-}
-
-/**
- * Points conversion configuration
- */
-export interface IPointsConversion {
-    amount: number; // Money amount (e.g., 10)
-    currency: string; // Currency code (e.g., "MXN")
-    points: number; // Points earned (e.g., 1)
-}
-
-/**
- * Stamp system reward configuration
- */
-export interface IStampReward {
-    rewardType: 'free_product' | 'coupon' | 'discount';
-    rewardValue: number | string; // Can be product identifier, discount amount, or coupon code
-    description: string;
-}
-
-/**
- * Reward system document interface
+ * Reward document interface
  */
 export interface IReward extends Document {
     _id: any;
-    businessId: Types.ObjectId; // Reference to the business that owns this reward system
-    type: 'points' | 'stamps';
+    businessId: Types.ObjectId; // Reference to the business
+    systemId: Types.ObjectId; // Reference to the system (points or stamps)
     name: string;
-    description?: string;
+    description: string;
+    rewardType: 'discount' | 'free_product' | 'coupon' | 'cashback';
+    rewardValue: number | string; // Can be percentage, amount, or product identifier
+    
+    // Cost of the reward
+    pointsRequired?: number; // For points-based rewards
+    stampsRequired?: number; // For stamps-based rewards (usually equals system's targetStamps)
+    
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
-    
-    // Points-based system fields
-    pointsConversion?: IPointsConversion; // Money to points conversion (e.g., 10 MXN = 1 point)
-    pointsRewards?: IPointsReward[]; // Available rewards that can be redeemed with points
-    
-    // Stamps-based system fields
-    targetStamps?: number; // Target number of stamps to collect (e.g., 10 drinks)
-    productType?: 'specific' | 'general' | 'any'; // Type of product counting towards stamps
-    productIdentifier?: string; // If specific, the product identifier
-    stampReward?: IStampReward; // Reward when target is reached
 }
 
-const pointsConversionSchema = new Schema<IPointsConversion>(
+const rewardSchema = new Schema<IReward>(
     {
-        amount: { type: Number, required: true, min: 0.01 },
-        currency: { type: String, required: true, default: 'MXN' },
-        points: { type: Number, required: true, min: 1 },
-    },
-    { _id: false }
-);
-
-const pointsRewardSchema = new Schema<IPointsReward>(
-    {
-        pointsRequired: { type: Number, required: true, min: 1 },
+        businessId: { type: Schema.Types.ObjectId, required: true, ref: 'Business', index: true },
+        systemId: { type: Schema.Types.ObjectId, required: true, ref: 'System', index: true },
+        name: { type: String, required: true },
+        description: { type: String, required: true },
         rewardType: {
             type: String,
             required: true,
             enum: ['discount', 'free_product', 'coupon', 'cashback'],
         },
         rewardValue: { type: Schema.Types.Mixed, required: true },
-        description: { type: String, required: true },
-    },
-    { _id: false }
-);
-
-const stampRewardSchema = new Schema<IStampReward>(
-    {
-        rewardType: {
-            type: String,
-            required: true,
-            enum: ['free_product', 'coupon', 'discount'],
-        },
-        rewardValue: { type: Schema.Types.Mixed, required: true },
-        description: { type: String, required: true },
-    },
-    { _id: false }
-);
-
-const rewardSchema = new Schema<IReward>(
-    {
-        businessId: { type: Schema.Types.ObjectId, required: true, ref: 'Business', index: true },
-        type: {
-            type: String,
-            required: true,
-            enum: ['points', 'stamps'],
-        },
-        name: { type: String, required: true },
-        description: { type: String },
+        pointsRequired: { type: Number, min: 1 },
+        stampsRequired: { type: Number, min: 1 },
         isActive: { type: Boolean, default: true },
-        
-        // Points-based fields
-        pointsConversion: { type: pointsConversionSchema },
-        pointsRewards: { type: [pointsRewardSchema], default: [] },
-        
-        // Stamps-based fields
-        targetStamps: { type: Number, min: 1 },
-        productType: {
-            type: String,
-            enum: ['specific', 'general', 'any'],
-        },
-        productIdentifier: { type: String },
-        stampReward: { type: stampRewardSchema },
     },
     { timestamps: true }
 );
 
 /**
- * Virtual `id` for convenience that returns the string form of _id.
+ * Virtual `id` for convenience
  */
 rewardSchema.virtual('id').get(function (this: IReward) {
     return this._id.toString();
 });
 
 /**
- * Validate that points systems have required fields
+ * Validate that reward has either points or stamps required
  */
 rewardSchema.pre('validate', function (next) {
-    if (this.type === 'points') {
-        if (!this.pointsConversion) {
-            return next(new Error('pointsConversion is required for points-based reward systems'));
-        }
-    } else if (this.type === 'stamps') {
-        if (!this.targetStamps || this.targetStamps < 1) {
-            return next(new Error('targetStamps is required and must be at least 1 for stamps-based reward systems'));
-        }
-        if (!this.productType) {
-            return next(new Error('productType is required for stamps-based reward systems'));
-        }
-        if (this.productType === 'specific' && !this.productIdentifier) {
-            return next(new Error('productIdentifier is required when productType is "specific"'));
-        }
-        if (!this.stampReward) {
-            return next(new Error('stampReward is required for stamps-based reward systems'));
-        }
+    if (!this.pointsRequired && !this.stampsRequired) {
+        return next(new Error('Either pointsRequired or stampsRequired must be specified'));
+    }
+    if (this.pointsRequired && this.stampsRequired) {
+        return next(new Error('Reward cannot have both pointsRequired and stampsRequired'));
     }
     next();
 });
 
 /**
- * toJSON transform hides internal fields when documents are serialized to JSON.
+ * Index for efficient queries
+ */
+rewardSchema.index({ businessId: 1, systemId: 1, isActive: 1 });
+
+/**
+ * toJSON transform
  */
 rewardSchema.set('toJSON', {
     virtuals: true,
@@ -166,7 +83,7 @@ rewardSchema.set('toJSON', {
 });
 
 /**
- * Collection name resolution from environment variable.
+ * Collection name from environment variable
  */
 const rawCollection = process.env.REWARDS_COLLECTION;
 const collectionName = rawCollection ? rawCollection.replace(/^['"]|['"]$/g, '') : undefined;
