@@ -350,3 +350,127 @@ export const getAllUsersForBusiness = async (businessId: string): Promise<Array<
     return results;
 };
 
+/**
+ * Subtract points and/or stamps from a user for a specific business.
+ * @param userId - The user ID
+ * @param businessId - The business ID
+ * @param pointsSystem - The points system (null if not subtracting points)
+ * @param pointsToSubtract - The number of points to subtract
+ * @param stampSystems - Array of stamp systems with their counts to subtract
+ * @returns Updated public user points object
+ */
+export const subtractPointsAndStamps = async (
+    userId: string,
+    businessId: string,
+    pointsSystem: PublicSystem | null,
+    pointsToSubtract?: number,
+    stampSystems?: Array<{ system: PublicSystem, count: number }>
+): Promise<PublicUserPoints> => {
+    const userIdObj = new Types.ObjectId(userId);
+    const businessIdObj = new Types.ObjectId(businessId);
+
+    // Find user points document
+    const userPoints = await UserPointsModel.findOne({ userId: userIdObj }).exec();
+
+    if (!userPoints) {
+        throw new Error('User has no points/stamps to subtract');
+    }
+
+    // Find business index in user's businessPoints array
+    const businessIndex = userPoints.businessPoints.findIndex(
+        (bp) => bp.businessId.toString() === businessIdObj.toString()
+    );
+
+    if (businessIndex === -1) {
+        throw new Error('User has no points/stamps at this business');
+    }
+
+    const businessPoints = userPoints.businessPoints[businessIndex];
+
+    // Validate and subtract points if points system is provided
+    if (pointsSystem && pointsToSubtract !== undefined && pointsToSubtract > 0) {
+        if (pointsSystem.businessId !== businessId) {
+            throw new Error('Points system does not belong to the specified business');
+        }
+        if (!pointsSystem.isActive) {
+            throw new Error('Points system is not active');
+        }
+
+        const pointsSystemIdObj = new Types.ObjectId(pointsSystem.id);
+
+        // Find the points system in reward systems
+        const pointsSystemIndex = businessPoints.rewardSystems.findIndex(
+            (rs) => rs.rewardSystemId.toString() === pointsSystemIdObj.toString()
+        );
+
+        if (pointsSystemIndex === -1) {
+            throw new Error('User has no points in this reward system');
+        }
+
+        const rewardSystemPoints = businessPoints.rewardSystems[pointsSystemIndex];
+
+        // Check if user has enough points
+        if (rewardSystemPoints.points < pointsToSubtract) {
+            throw new Error(`Insufficient points. User has ${rewardSystemPoints.points} points, trying to subtract ${pointsToSubtract}`);
+        }
+
+        // Subtract points from reward system
+        rewardSystemPoints.points -= pointsToSubtract;
+        rewardSystemPoints.lastUpdated = new Date();
+
+        // Subtract from business total
+        businessPoints.points -= pointsToSubtract;
+    }
+
+    // Validate and subtract stamps if stamp systems are provided
+    if (stampSystems && stampSystems.length > 0) {
+        for (const { system, count } of stampSystems) {
+            if (system.businessId !== businessId) {
+                throw new Error(`Stamp system ${system.name} does not belong to the specified business`);
+            }
+            if (!system.isActive) {
+                throw new Error(`Stamp system ${system.name} is not active`);
+            }
+            if (count <= 0) {
+                throw new Error(`Invalid stamp count for system ${system.name}`);
+            }
+
+            const stampSystemIdObj = new Types.ObjectId(system.id);
+
+            // Find the stamp system in reward systems
+            const stampSystemIndex = businessPoints.rewardSystems.findIndex(
+                (rs) => rs.rewardSystemId.toString() === stampSystemIdObj.toString()
+            );
+
+            if (stampSystemIndex === -1) {
+                throw new Error(`User has no stamps in reward system ${system.name}`);
+            }
+
+            const rewardSystemStamps = businessPoints.rewardSystems[stampSystemIndex];
+
+            // Check if user has enough stamps
+            if (rewardSystemStamps.stamps < count) {
+                throw new Error(`Insufficient stamps in ${system.name}. User has ${rewardSystemStamps.stamps} stamps, trying to subtract ${count}`);
+            }
+
+            // Subtract stamps from reward system
+            rewardSystemStamps.stamps -= count;
+            rewardSystemStamps.lastUpdated = new Date();
+
+            // Subtract from business total
+            businessPoints.stamps -= count;
+        }
+    }
+
+    // Update last visit
+    businessPoints.lastVisit = new Date();
+
+    // Mark the array as modified so Mongoose saves it
+    userPoints.markModified('businessPoints');
+
+    // Save the document
+    await userPoints.save();
+
+    return toPublic(userPoints as IUserPoints);
+};
+

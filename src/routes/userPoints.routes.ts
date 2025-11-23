@@ -3,6 +3,7 @@
  *
  * Exposes routes for managing user points and stamps:
  * - POST   /user-points/add                  -> add points/stamps to a user (protected - business)
+ * - POST   /user-points/subtract             -> subtract points/stamps from a user (protected - business)
  * - GET    /user-points                      -> get user's points (protected - user)
  * - GET    /user-points/business/:businessId -> get user's points for a specific business (protected - user)
  * - GET    /user-points/:userId              -> get user's points for a specific business (protected - business)
@@ -16,6 +17,9 @@ const router = Router();
 
 // Business endpoint: Add points/stamps to a user
 router.post('/add', authenticateBusiness, userPointsCtrl.addPointsOrStamps);
+
+// Business endpoint: Subtract points/stamps from a user
+router.post('/subtract', authenticateBusiness, userPointsCtrl.subtractPointsOrStamps);
 
 // Business endpoint: Get all users with points/stamps at this business
 router.get('/business-users', authenticateBusiness, userPointsCtrl.getAllUsersForBusiness);

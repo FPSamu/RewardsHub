@@ -14,7 +14,16 @@ dotenv.config();
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+
+// CORS configuration for local network access
+const corsOptions = {
+    origin: process.env.NODE_ENV === 'production' 
+        ? process.env.ALLOWED_ORIGINS?.split(',') 
+        : true, // Allow all origins in development
+    credentials: true,
+};
+app.use(cors(corsOptions));
+
 app.use(morgan('dev'));
 app.use(express.json());
 

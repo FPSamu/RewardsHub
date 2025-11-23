@@ -235,3 +235,113 @@ export const getUserPointsForBusinessByUser = async (req: Request, res: Response
     }
 };
 
+/**
+ * Subtract points and/or stamps from a user.
+ * This endpoint is typically used when a user redeems rewards.
+ * Expects:
+ * - userId: string (user to subtract points/stamps from)
+ * - pointsToSubtract?: number (for points subtraction)
+ * - rewardSystemId?: string (for points system identification)
+ * - stampData?: { rewardSystemId: string, stampsCount: number }[] (for stamps subtraction)
+ */
+export const subtractPointsOrStamps = async (req: Request, res: Response) => {
+    const business = req.business;
+    if (!business) {
+        return res.status(401).json({ message: 'not authenticated' });
+    }
+
+    const { userId, pointsToSubtract, rewardSystemId, stampData } = req.body as {
+        userId?: string;
+        pointsToSubtract?: number;
+        rewardSystemId?: string;
+        stampData?: Array<{
+            rewardSystemId: string;
+            stampsCount: number;
+        }>;
+    };
+
+    // Validate required fields
+    if (!userId) {
+        return res.status(400).json({ message: 'userId is required' });
+    }
+
+    if (!pointsToSubtract && (!stampData || stampData.length === 0)) {
+        return res.status(400).json({ message: 'either pointsToSubtract or stampData is required' });
+    }
+
+    if (pointsToSubtract && !rewardSystemId) {
+        return res.status(400).json({ message: 'rewardSystemId is required when subtracting points' });
+    }
+
+    // Validate user exists
+    const user = await userService.findUserById(userId);
+    if (!user) {
+        return res.status(404).json({ message: 'user not found' });
+    }
+
+    try {
+        // Process points if pointsToSubtract is provided
+        let pointsSystem = null;
+        if (pointsToSubtract && pointsToSubtract > 0 && rewardSystemId) {
+            // Get and validate points system
+            pointsSystem = await systemService.findSystemByIdAndBusinessId(rewardSystemId, business.id);
+            if (!pointsSystem) {
+                return res.status(404).json({ message: 'points system not found or does not belong to this business' });
+            }
+
+            if (!pointsSystem.isActive) {
+                return res.status(400).json({ message: 'points system is not active' });
+            }
+
+            if (pointsSystem.type !== 'points') {
+                return res.status(400).json({ message: 'specified system is not a points system' });
+            }
+        }
+
+        // Process stamps if stampData is provided
+        let stampSystems: Array<{ system: any, count: number }> = [];
+        if (stampData && stampData.length > 0) {
+            for (const stamp of stampData) {
+                if (!stamp.rewardSystemId || stamp.stampsCount === undefined || stamp.stampsCount <= 0) {
+                    return res.status(400).json({ message: 'invalid stamp data: rewardSystemId and stampsCount are required' });
+                }
+
+                // Get and validate stamp system
+                const stampSystem = await systemService.findSystemByIdAndBusinessId(stamp.rewardSystemId, business.id);
+                if (!stampSystem) {
+                    return res.status(404).json({ message: `stamp system ${stamp.rewardSystemId} not found or does not belong to this business` });
+                }
+
+                if (!stampSystem.isActive) {
+                    return res.status(400).json({ message: `stamp system ${stampSystem.name} is not active` });
+                }
+
+                if (stampSystem.type !== 'stamps') {
+                    return res.status(400).json({ message: `system ${stampSystem.name} is not a stamps system` });
+                }
+
+                stampSystems.push({ system: stampSystem, count: stamp.stampsCount });
+            }
+        }
+
+        // Subtract points and stamps
+        const updatedUserPoints = await userPointsService.subtractPointsAndStamps(
+            userId,
+            business.id,
+            pointsSystem,
+            pointsToSubtract,
+            stampSystems
+        );
+
+        return res.status(200).json({
+            message: 'Points and/or stamps subtracted successfully',
+            userPoints: updatedUserPoints,
+        });
+    } catch (error: any) {
+        if (error.message) {
+            return res.status(400).json({ message: error.message });
+        }
+        return res.status(500).json({ message: 'failed to subtract points/stamps' });
+    }
+};
+
