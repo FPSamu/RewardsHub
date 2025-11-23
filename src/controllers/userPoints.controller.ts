@@ -7,6 +7,8 @@ import { Request, Response } from 'express';
 import * as userPointsService from '../services/userPoints.service';
 import * as systemService from '../services/system.service';
 import * as userService from '../services/user.service';
+import * as transactionService from '../services/transaction.service';
+import * as businessService from '../services/business.service';
 
 /**
  * Add points and/or stamps to a user after a purchase.
@@ -104,9 +106,47 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
             stampSystems
         );
 
+        // Create transaction record
+        const transactionItems = [];
+        
+        if (pointsSystem && purchaseAmount) {
+            const pointsEarned = userPointsService.calculatePoints(
+                purchaseAmount,
+                pointsSystem.pointsConversion!
+            );
+            transactionItems.push({
+                rewardSystemId: pointsSystem.id,
+                rewardSystemName: pointsSystem.name,
+                pointsChange: pointsEarned,
+                stampsChange: 0,
+            });
+        }
+        
+        for (const { system, count } of stampSystems) {
+            transactionItems.push({
+                rewardSystemId: system.id,
+                rewardSystemName: system.name,
+                pointsChange: 0,
+                stampsChange: count,
+            });
+        }
+
+        const transaction = await transactionService.createTransaction(
+            userId,
+            business.id,
+            business.name,
+            'add',
+            transactionItems,
+            purchaseAmount,
+            undefined,
+            undefined,
+            'Purchase transaction'
+        );
+
         return res.status(200).json({
             message: 'Points and/or stamps added successfully',
             userPoints: updatedUserPoints,
+            transaction,
         });
     } catch (error: any) {
         if (error.message) {
@@ -333,9 +373,43 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
             stampSystems
         );
 
+        // Create transaction record
+        const transactionItems = [];
+        
+        if (pointsSystem && pointsToSubtract) {
+            transactionItems.push({
+                rewardSystemId: pointsSystem.id,
+                rewardSystemName: pointsSystem.name,
+                pointsChange: -pointsToSubtract,
+                stampsChange: 0,
+            });
+        }
+        
+        for (const { system, count } of stampSystems) {
+            transactionItems.push({
+                rewardSystemId: system.id,
+                rewardSystemName: system.name,
+                pointsChange: 0,
+                stampsChange: -count,
+            });
+        }
+
+        const transaction = await transactionService.createTransaction(
+            userId,
+            business.id,
+            business.name,
+            'subtract',
+            transactionItems,
+            undefined,
+            undefined,
+            undefined,
+            'Points/stamps subtraction'
+        );
+
         return res.status(200).json({
             message: 'Points and/or stamps subtracted successfully',
             userPoints: updatedUserPoints,
+            transaction,
         });
     } catch (error: any) {
         if (error.message) {

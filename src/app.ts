@@ -8,6 +8,7 @@ import businessRoutes from './routes/business.routes';
 import systemRoutes from './routes/system.routes';
 import rewardRoutes from './routes/reward.routes';
 import userPointsRoutes from './routes/userPoints.routes';
+import transactionRoutes from './routes/transaction.routes';
 
 dotenv.config();
 
@@ -48,5 +49,6 @@ app.use('/business', businessRoutes);
 app.use('/systems', systemRoutes);
 app.use('/rewards', rewardRoutes);
 app.use('/user-points', userPointsRoutes);
+app.use('/transactions', transactionRoutes);
 
 export default app;
