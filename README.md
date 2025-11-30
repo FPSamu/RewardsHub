@@ -148,6 +148,7 @@ See [POSTMAN_GUIDE.md](./POSTMAN_GUIDE.md) for detailed API documentation and te
 ## 📁 Additional Documentation
 
 - [Deployment Guide](./DEPLOYMENT.md) - Deploy to Render.com
+- [CORS Setup Guide](./CORS_SETUP.md) - Configure CORS for frontend integration
 - [Postman Testing Guide](./POSTMAN_GUIDE.md) - API testing with Postman
 - [Environment Variables](./.env.example) - Required configuration
 

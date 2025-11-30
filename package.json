@@ -15,6 +15,7 @@
     "test": "jest --runInBand",
     "lint": "eslint \"src/**/*.{ts,js}\" --fix",
     "verify-deployment": "node scripts/verify-deployment.js",
+    "verify-cors": "ts-node scripts/verify-cors.ts",
     "generate-secrets": "node scripts/generate-secrets.js"
   },
   "keywords": [],
