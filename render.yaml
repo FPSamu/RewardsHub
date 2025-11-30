@@ -3,8 +3,10 @@ services:
   - type: web
     name: rewardshub-api
     env: node
+    runtime: node
     region: oregon
     plan: free
+    rootDir: .
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
