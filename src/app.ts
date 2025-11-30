@@ -20,7 +20,7 @@ app.use(helmet());
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(origin => origin.trim()) || [];
 
 const corsOptions = {
-    origin: (origin = ["https://tu-app.vercel.app", "http://localhost:5173"], callback: (err: Error | null, allow?: boolean) => void) => {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
         // Allow requests with no origin (like mobile apps, Postman, or curl)
         if (!origin) {
             return callback(null, true);
