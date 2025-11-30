@@ -55,3 +55,114 @@
 1. Registers/logs in with a client account.
 2. Opens QR code.
 3. See rewards, visited businesses, and not visited businesses.
+
+---
+
+## 🚀 Deployment
+
+This project is ready to be deployed on **Render.com** with MongoDB Atlas.
+
+### Quick Deploy
+
+1. **Prepare for deployment:**
+   ```bash
+   npm run verify-deployment
+   ```
+
+2. **Follow the deployment guide:**
+   See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed step-by-step instructions.
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+- `MONGO_URI` - MongoDB connection string
+- `JWT_SECRET` - Secret for JWT tokens
+- `JWT_REFRESH_SECRET` - Secret for refresh tokens
+- `ALLOWED_ORIGINS` - Comma-separated list of allowed frontend URLs
+
+---
+
+## 💻 Development
+
+### Installation
+
+```bash
+# Install dependencies
+npm install
+
+# Copy environment variables
+cp .env.example .env
+# Edit .env with your local configuration
+```
+
+### Running Locally
+
+```bash
+# Development mode with hot reload
+npm run dev
+
+# Build for production
+npm run build
+
+# Run production build
+npm start
+```
+
+### Testing
+
+```bash
+# Run tests
+npm test
+
+# Type checking
+npm run typecheck
+
+# Linting
+npm run lint
+```
+
+---
+
+## 📚 API Documentation
+
+See [POSTMAN_GUIDE.md](./POSTMAN_GUIDE.md) for detailed API documentation and testing guide.
+
+### Base Endpoints
+
+- **Health Check**: `GET /health`
+- **Authentication**: `/auth/*`
+- **Business**: `/business/*`
+- **Systems**: `/systems/*`
+- **Rewards**: `/rewards/*`
+- **User Points**: `/user-points/*`
+- **Transactions**: `/transactions/*`
+
+---
+
+## 📁 Additional Documentation
+
+- [Deployment Guide](./DEPLOYMENT.md) - Deploy to Render.com
+- [Postman Testing Guide](./POSTMAN_GUIDE.md) - API testing with Postman
+- [Environment Variables](./.env.example) - Required configuration
+
+---
+
+## 🔒 Security
+
+- JWT-based authentication
+- Password hashing with bcrypt
+- Helmet.js for security headers
+- CORS configuration for production
+- Environment-based configuration
+
+---
+
+## 📝 License
+
+ISC

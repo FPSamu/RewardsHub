@@ -1,0 +1,39 @@
+services:
+  # RewardsHub Backend API
+  - type: web
+    name: rewardshub-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: USER_COLLECTION
+        value: users
+      - key: BUSINESSES_COLLECTION
+        value: businesses
+      - key: SYSTEMS_COLLECTION
+        value: systems
+      - key: REWARDS_COLLECTION
+        value: rewards
+      - key: USERS_POINTS_COLLECTION
+        value: userPoints
+      - key: TRANSACTIONS_COLLECTION
+        value: transactions
