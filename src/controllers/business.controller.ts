@@ -85,6 +85,27 @@ export const me = (req: Request, res: Response) => {
     });
 };
 
+/**
+ * Update authenticated business information
+ * PUT /api/business/me
+ */
+export const updateBusiness = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    const { name, email } = req.body;
+
+    try {
+        const updatedBusiness = await businessService.updateBusiness(biz.id, { name, email });
+        return res.json(updatedBusiness);
+    } catch (error: any) {
+        if (error.code === 11000) {
+            return res.status(409).json({ message: 'email already in use' });
+        }
+        return res.status(500).json({ message: 'failed to update business' });
+    }
+};
+
 export const getBusinessById = async (req: Request, res: Response) => {
     const { id } = req.params;
     

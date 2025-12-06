@@ -47,6 +47,29 @@ export const hasRefreshToken = async (businessId: string, token: string): Promis
 };
 
 /**
+ * Update business information
+ * @param businessId - The business ID
+ * @param updates - Object containing fields to update
+ * @returns Updated business object
+ */
+export const updateBusiness = async (
+    businessId: string,
+    updates: { name?: string; email?: string; status?: 'active' | 'inactive' }
+) => {
+    const doc = await BusinessModel.findByIdAndUpdate(
+        businessId,
+        { $set: updates },
+        { new: true, runValidators: true }
+    ).exec();
+
+    if (!doc) {
+        throw new Error('Business not found');
+    }
+
+    return toPublic(doc as IBusiness);
+};
+
+/**
  * Update business coordinates directly
  * @param businessId - The business ID
  * @param latitude - Latitude coordinate

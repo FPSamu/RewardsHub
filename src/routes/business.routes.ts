@@ -7,6 +7,7 @@ const router = Router();
 router.post('/register', businessCtrl.register);
 router.post('/login', businessCtrl.login);
 router.get('/me', authenticateBusiness, businessCtrl.me);
+router.put('/me', authenticateBusiness, businessCtrl.updateBusiness);
 router.post('/refresh', businessCtrl.refresh);
 router.post('/logout', businessCtrl.logout);
 
