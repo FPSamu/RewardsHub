@@ -142,7 +142,7 @@ export const updateBusinessLocation = async (businessId: string, addressString: 
 export const findNearbyBusinesses = async (
     latitude: number,
     longitude: number,
-    maxDistanceKm: number = 10
+    maxDistanceKm: number = 300
 ): Promise<any[]> => {
     // Simple distance calculation using lat/lng
     // 1 degree ≈ 111km, so we calculate a rough bounding box
