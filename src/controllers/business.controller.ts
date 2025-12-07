@@ -82,7 +82,8 @@ export const me = (req: Request, res: Response) => {
         status: biz.status,
         address: biz.address,
         location: biz.location,
-        createdAt: biz.createdAt 
+        createdAt: biz.createdAt,
+        logoUrl: biz.logoUrl
     });
 };
 
