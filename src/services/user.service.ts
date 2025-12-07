@@ -18,6 +18,7 @@ const toPublic = (doc: IUser) => ({
     username: doc.username,
     email: doc.email,
     passHash: doc.passHash,
+    profilePicture: doc.profilePicture,
     createdAt: doc.createdAt.toISOString(),
 });
 
@@ -83,4 +84,49 @@ export const removeRefreshToken = async (userId: string, token: string): Promise
 export const hasRefreshToken = async (userId: string, token: string): Promise<boolean> => {
     const doc = await UserModel.findOne({ _id: userId, refreshTokens: token }).exec();
     return !!doc;
+};
+
+/**
+ * Update user information.
+ * @param userId - user document id
+ * @param updates - fields to update (username, email, password)
+ * @returns updated public user object
+ */
+export const updateUser = async (
+    userId: string,
+    updates: { username?: string; email?: string; password?: string }
+) => {
+    const updateData: any = {};
+
+    if (updates.username) {
+        updateData.username = updates.username;
+    }
+
+    if (updates.email) {
+        updateData.email = updates.email.toLowerCase();
+    }
+
+    if (updates.password) {
+        updateData.passHash = await bcrypt.hash(updates.password, 10);
+    }
+
+    const doc = await UserModel.findByIdAndUpdate(userId, updateData, { new: true }).exec();
+    if (!doc) throw new Error('user not found');
+    return toPublic(doc as IUser);
+};
+
+/**
+ * Update user profile picture URL.
+ * @param userId - user document id
+ * @param profilePictureUrl - S3 URL of the profile picture
+ * @returns updated public user object
+ */
+export const updateUserProfilePicture = async (userId: string, profilePictureUrl: string) => {
+    const doc = await UserModel.findByIdAndUpdate(
+        userId,
+        { profilePicture: profilePictureUrl },
+        { new: true }
+    ).exec();
+    if (!doc) throw new Error('user not found');
+    return toPublic(doc as IUser);
 };

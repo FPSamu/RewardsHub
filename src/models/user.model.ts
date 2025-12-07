@@ -6,6 +6,7 @@ export interface IUser extends Document {
     username: string;
     email: string;
     passHash: string; // hashed password (never returned in JSON)
+    profilePicture?: string; // S3 URL of profile picture
     createdAt: Date;
     /** list of active refresh tokens (JWT strings) for this user */
     refreshTokens?: string[];
@@ -16,6 +17,7 @@ const userSchema = new Schema<IUser>(
         username: { type: String, required: true },
         email: { type: String, required: true, unique: true, index: true },
         passHash: { type: String, required: true },
+        profilePicture: { type: String },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
     },

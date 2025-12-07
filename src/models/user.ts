@@ -12,5 +12,6 @@ export interface User {
     username: string;
     email: string;
     passHash: string;
+    profilePicture?: string;
     createdAt: string;
 }

@@ -33,7 +33,7 @@ export const register = async (req: Request, res: Response) => {
     const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     // store refresh token
     await userService.addRefreshToken(user.id, refreshToken);
-    return res.status(201).json({ user: { id: user.id, username: user.username, email: user.email, createdAt: user.createdAt }, token: accessToken, refreshToken });
+    return res.status(201).json({ user: { id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture, createdAt: user.createdAt }, token: accessToken, refreshToken });
 };
 
 /**
@@ -53,7 +53,7 @@ export const login = async (req: Request, res: Response) => {
     const accessToken = (jwt as any).sign({ sub: user.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await userService.addRefreshToken(user.id, refreshToken);
-    return res.json({ user: { id: user.id, username: user.username, email: user.email, createdAt: user.createdAt }, token: accessToken, refreshToken });
+    return res.json({ user: { id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture, createdAt: user.createdAt }, token: accessToken, refreshToken });
 };
 
 /**
@@ -105,7 +105,7 @@ export const logout = async (req: Request, res: Response) => {
 export const me = (req: Request, res: Response) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'not authenticated' });
-    return res.json({ id: user.id, username: user.username, email: user.email, createdAt: user.createdAt });
+    return res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture, createdAt: user.createdAt });
 };
 
 /**
@@ -131,9 +131,92 @@ export const getUserById = async (req: Request, res: Response) => {
             id: user.id,
             username: user.username,
             email: user.email,
+            profilePicture: user.profilePicture,
             createdAt: user.createdAt
         });
     } catch (error) {
         return res.status(500).json({ message: 'failed to get user information' });
+    }
+};
+
+/**
+ * Update current authenticated user information.
+ * Expects { username?, email?, password? } in body.
+ * PUT /api/auth/me
+ */
+export const updateMe = async (req: Request, res: Response) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: 'not authenticated' });
+
+    const { username, email, password } = req.body as {
+        username?: string;
+        email?: string;
+        password?: string;
+    };
+
+    // Validate that at least one field is provided
+    if (!username && !email && !password) {
+        return res.status(400).json({ message: 'at least one field (username, email, password) is required' });
+    }
+
+    // Check if email is already taken by another user
+    if (email) {
+        const existing = await userService.findUserByEmail(email);
+        if (existing && existing.id !== user.id) {
+            return res.status(409).json({ message: 'email already in use' });
+        }
+    }
+
+    try {
+        const updatedUser = await userService.updateUser(user.id, { username, email, password });
+        return res.json({
+            id: updatedUser.id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            profilePicture: updatedUser.profilePicture,
+            createdAt: updatedUser.createdAt
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'failed to update user' });
+    }
+};
+
+/**
+ * Upload user profile picture
+ * POST /api/auth/profile-picture
+ * Expects multipart/form-data with field 'profilePicture'
+ */
+export const uploadProfilePicture = async (req: Request, res: Response) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: 'not authenticated' });
+
+    if (!req.file) {
+        return res.status(400).json({ message: 'no file uploaded' });
+    }
+
+    try {
+        // Dynamic import to avoid circular dependency
+        const uploadService = await import('../services/upload.service');
+        
+        // Upload to S3
+        const profilePictureUrl = await uploadService.uploadFile(req.file, 'profile-pictures');
+
+        // Update user record
+        const updatedUser = await userService.updateUserProfilePicture(user.id, profilePictureUrl);
+
+        return res.json({
+            message: 'Profile picture uploaded successfully',
+            profilePicture: profilePictureUrl,
+            user: {
+                id: updatedUser.id,
+                username: updatedUser.username,
+                email: updatedUser.email,
+                profilePicture: updatedUser.profilePicture,
+                createdAt: updatedUser.createdAt
+            },
+        });
+    } catch (error: any) {
+        console.error('Upload error:', error);
+        return res.status(500).json({ message: 'failed to upload profile picture' });
     }
 };

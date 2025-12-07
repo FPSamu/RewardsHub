@@ -7,14 +7,24 @@
  * - GET  /auth/me       -> get current user (requires Bearer token)
  */
 import { Router } from 'express';
+import multer from 'multer';
 import * as authCtrl from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+});
+
 router.post('/register', authCtrl.register);
 router.post('/login', authCtrl.login);
 router.get('/me', authenticate, authCtrl.me);
+router.put('/me', authenticate, authCtrl.updateMe);
+router.post('/profile-picture', authenticate, upload.single('profilePicture'), authCtrl.uploadProfilePicture);
 
 // Refresh and logout endpoints
 router.post('/refresh', authCtrl.refresh);
