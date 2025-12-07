@@ -10,6 +10,7 @@ const toPublic = (doc: IBusiness) => ({
     status: doc.status,
     address: doc.address,
     location: doc.location,
+    logoUrl: doc.logoUrl,
     createdAt: doc.createdAt.toISOString(),
 });
 
@@ -60,6 +61,26 @@ export const updateBusiness = async (
         businessId,
         { $set: updates },
         { new: true, runValidators: true }
+    ).exec();
+
+    if (!doc) {
+        throw new Error('Business not found');
+    }
+
+    return toPublic(doc as IBusiness);
+};
+
+/**
+ * Update business logo URL
+ * @param businessId - The business ID
+ * @param logoUrl - The new logo URL
+ * @returns Updated business object
+ */
+export const updateBusinessLogo = async (businessId: string, logoUrl: string) => {
+    const doc = await BusinessModel.findByIdAndUpdate(
+        businessId,
+        { logoUrl },
+        { new: true }
     ).exec();
 
     if (!doc) {

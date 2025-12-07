@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as businessService from '../services/business.service';
+import * as uploadService from '../services/upload.service';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
@@ -103,6 +104,37 @@ export const updateBusiness = async (req: Request, res: Response) => {
             return res.status(409).json({ message: 'email already in use' });
         }
         return res.status(500).json({ message: 'failed to update business' });
+    }
+};
+
+/**
+ * Upload business logo
+ * POST /api/business/logo
+ * Expects multipart/form-data with field 'logo'
+ */
+export const uploadLogo = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    if (!req.file) {
+        return res.status(400).json({ message: 'no file uploaded' });
+    }
+
+    try {
+        // Upload to S3
+        const logoUrl = await uploadService.uploadFile(req.file, 'logos');
+
+        // Update business record
+        const updatedBusiness = await businessService.updateBusinessLogo(biz.id, logoUrl);
+
+        return res.json({
+            message: 'Logo uploaded successfully',
+            logoUrl,
+            business: updatedBusiness,
+        });
+    } catch (error: any) {
+        console.error('Upload error:', error);
+        return res.status(500).json({ message: 'failed to upload logo' });
     }
 };
 

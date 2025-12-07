@@ -21,6 +21,7 @@ export interface IBusiness extends Document {
     status: 'active' | 'inactive';
     address?: string; // Format: calle-numero-ciudad-estado-pais
     location?: ILocation;
+    logoUrl?: string;
     createdAt: Date;
     refreshTokens?: string[];
 }
@@ -43,6 +44,7 @@ const businessSchema = new Schema<IBusiness>(
         status: { type: String, enum: ['active', 'inactive'], default: 'inactive' },
         address: { type: String },
         location: { type: locationSchema },
+        logoUrl: { type: String },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
     },

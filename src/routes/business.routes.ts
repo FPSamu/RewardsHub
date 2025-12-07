@@ -1,13 +1,21 @@
 import { Router } from 'express';
+import multer from 'multer';
 import * as businessCtrl from '../controllers/business.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
 
 const router = Router();
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+});
 
 router.post('/register', businessCtrl.register);
 router.post('/login', businessCtrl.login);
 router.get('/me', authenticateBusiness, businessCtrl.me);
 router.put('/me', authenticateBusiness, businessCtrl.updateBusiness);
+router.post('/logo', authenticateBusiness, upload.single('logo'), businessCtrl.uploadLogo);
 router.post('/refresh', businessCtrl.refresh);
 router.post('/logout', businessCtrl.logout);
 
