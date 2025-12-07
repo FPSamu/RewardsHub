@@ -162,6 +162,7 @@ export const getBusinessById = async (req: Request, res: Response) => {
             address: business.address,
             location: business.location,
             createdAt: business.createdAt,
+            logoUrl: business.logoUrl
         });
     } catch (error) {
         return res.status(500).json({ message: 'failed to get business information' });
