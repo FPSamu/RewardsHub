@@ -19,7 +19,7 @@ export interface IBusiness extends Document {
     email: string;
     passHash: string;
     status: 'active' | 'inactive';
-    address?: string; // Format: calle-numero-ciudad-estado-pais
+    address?: string;
     location?: ILocation;
     logoUrl?: string;
     createdAt: Date;

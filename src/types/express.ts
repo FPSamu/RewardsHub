@@ -13,7 +13,7 @@ export interface Business {
     address?: string;
     location?: ILocation;
     createdAt: string;
-    logoUrl: string;
+    logoUrl?: string;
 }
 
 declare global {
