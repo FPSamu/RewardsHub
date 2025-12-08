@@ -9,10 +9,15 @@ import systemRoutes from './routes/system.routes';
 import rewardRoutes from './routes/reward.routes';
 import userPointsRoutes from './routes/userPoints.routes';
 import transactionRoutes from './routes/transaction.routes';
+import subscriptionRoutes from './routes/subscription.routes';
+import webhookRoutes from './routes/webhook.routes';
 
 dotenv.config();
 
 const app = express();
+
+// Webhook routes MUST come before express.json() for raw body parsing
+app.use('/webhooks', webhookRoutes);
 
 app.use(helmet());
 
@@ -81,5 +86,6 @@ app.use('/systems', systemRoutes);
 app.use('/rewards', rewardRoutes);
 app.use('/user-points', userPointsRoutes);
 app.use('/transactions', transactionRoutes);
+app.use('/subscriptions', subscriptionRoutes);
 
 export default app;
