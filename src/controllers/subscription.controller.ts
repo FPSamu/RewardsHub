@@ -42,10 +42,21 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Invalid plan type' });
         }
 
-        const subscription = await subscriptionService.getSubscriptionByBusinessId(businessId);
+        let subscription = await subscriptionService.getSubscriptionByBusinessId(businessId);
 
+        // Auto-create subscription record for legacy users if missing
         if (!subscription) {
-            return res.status(404).json({ message: 'No subscription record found' });
+            console.log(`Creating missing subscription record for business: ${businessId}`);
+            try {
+                subscription = await subscriptionService.createSubscription(
+                    businessId,
+                    req.business!.email,
+                    req.business!.name
+                );
+            } catch (err) {
+                console.error('Failed to auto-create subscription:', err);
+                return res.status(500).json({ message: 'Failed to initialize subscription account' });
+            }
         }
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
