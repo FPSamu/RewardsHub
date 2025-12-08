@@ -25,4 +25,13 @@ router.put('/plan', subscriptionCtrl.updatePlan);
 // Cancel subscription
 router.post('/cancel', subscriptionCtrl.cancelSubscription);
 
+// Get subscription plans
+router.get('/plans', subscriptionCtrl.getPlans);
+
+// Verify subscription
+router.get('/verify', subscriptionCtrl.verifySubscription);
+
+// Activate lifetime subscription
+router.post('/activate-lifetime', subscriptionCtrl.activateLifetime);
+
 export default router;

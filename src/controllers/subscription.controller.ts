@@ -31,9 +31,14 @@ export const getMySubscription = async (req: Request, res: Response) => {
 export const createCheckoutSession = async (req: Request, res: Response) => {
     try {
         const businessId = req.business!.id;
-        const { planType } = req.body as { planType: PlanType };
+        // Allow 'plan' from frontend to map to 'planType'
+        let { planType, plan } = req.body as { planType?: PlanType, plan?: PlanType };
+        
+        if (!planType && plan) {
+            planType = plan;
+        }
 
-        if (!['monthly', 'yearly', 'lifetime_access'].includes(planType)) {
+        if (!planType || !['monthly', 'yearly', 'lifetime_access'].includes(planType)) {
             return res.status(400).json({ message: 'Invalid plan type' });
         }
 
@@ -156,5 +161,89 @@ export const checkSubscriptionStatus = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Check subscription status error:', error);
         res.status(500).json({ message: 'Failed to check subscription status' });
+    }
+};
+
+/**
+ * Get subscription plans
+ * GET /api/subscriptions/plans
+ */
+export const getPlans = async (req: Request, res: Response) => {
+    try {
+        // Return configured plans
+        res.json({
+            monthly: {
+                id: process.env.STRIPE_MONTHLY_PRICE_ID,
+                name: 'Monthly Plan',
+                price: 29.99, // Example price, ideally fetch from Stripe or config
+                currency: 'usd'
+            },
+            yearly: {
+                id: process.env.STRIPE_YEARLY_PRICE_ID,
+                name: 'Yearly Plan',
+                price: 299.99,
+                currency: 'usd'
+            },
+            lifetime: {
+                id: process.env.STRIPE_LIFETIME_PRICE_ID,
+                name: 'Lifetime Access',
+                price: 499.99,
+                currency: 'usd'
+            }
+        });
+    } catch (error) {
+        console.error('Get plans error:', error);
+        res.status(500).json({ message: 'Failed to get plans' });
+    }
+};
+
+/**
+ * Verify subscription
+ * GET /api/subscriptions/verify
+ */
+export const verifySubscription = async (req: Request, res: Response) => {
+    try {
+        const businessId = req.business!.id;
+        const hasActive = await subscriptionService.hasActiveSubscription(businessId);
+        const subscription = await subscriptionService.getSubscriptionByBusinessId(businessId);
+
+        res.json({ 
+            valid: hasActive,
+            subscription
+        });
+    } catch (error) {
+        console.error('Verify subscription error:', error);
+        res.status(500).json({ message: 'Failed to verify subscription' });
+    }
+};
+
+/**
+ * Activate lifetime subscription with code
+ * POST /api/subscriptions/activate-lifetime
+ */
+export const activateLifetime = async (req: Request, res: Response) => {
+    try {
+        const businessId = req.business!.id;
+        const { code } = req.body;
+
+        // Simple hardcoded check for now, or implement a Code model
+        const validCode = process.env.LIFETIME_ACCESS_CODE || 'LIFETIME2025';
+
+        if (code !== validCode) {
+            return res.status(400).json({ message: 'Invalid activation code' });
+        }
+
+        const subscription = await subscriptionService.activateSubscription(
+            businessId,
+            'lifetime_access'
+        );
+
+        res.json({ 
+            message: 'Lifetime access activated successfully',
+            subscription
+        });
+    } catch (error) {
+        console.error('Activate lifetime error:', error);
+        res.status(500).json({ message: 'Failed to activate lifetime subscription' });
     }
 };
