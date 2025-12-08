@@ -86,6 +86,6 @@ app.use('/systems', systemRoutes);
 app.use('/rewards', rewardRoutes);
 app.use('/user-points', userPointsRoutes);
 app.use('/transactions', transactionRoutes);
-app.use('/subscriptions', subscriptionRoutes);
+app.use('/subscription', subscriptionRoutes); 
 
 export default app;
