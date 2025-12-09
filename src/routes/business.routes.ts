@@ -15,6 +15,7 @@ router.post('/register', businessCtrl.register);
 router.post('/login', businessCtrl.login);
 router.get('/me', authenticateBusiness, businessCtrl.me);
 router.put('/me', authenticateBusiness, businessCtrl.updateBusiness);
+router.delete('/me', authenticateBusiness, businessCtrl.deleteAccount);
 router.post('/logo', authenticateBusiness, upload.single('logo'), businessCtrl.uploadLogo);
 router.post('/refresh', businessCtrl.refresh);
 router.post('/logout', businessCtrl.logout);

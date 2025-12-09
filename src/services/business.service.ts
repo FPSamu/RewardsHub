@@ -241,3 +241,18 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 };
+
+/**
+ * Delete a business account
+ * @param businessId - The business ID to delete
+ * @returns void
+ */
+export const deleteBusiness = async (businessId: string): Promise<void> => {
+    const business = await BusinessModel.findById(businessId).exec();
+    
+    if (!business) {
+        throw new Error('Business not found');
+    }
+
+    await BusinessModel.findByIdAndDelete(businessId).exec();
+};

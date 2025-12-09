@@ -273,3 +273,20 @@ export const getNearbyBusinesses = async (req: Request, res: Response) => {
         return res.status(500).json({ message: 'failed to find nearby businesses' });
     }
 };
+
+/**
+ * Delete the authenticated business account
+ * DELETE /api/business/me
+ */
+export const deleteAccount = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    try {
+        await businessService.deleteBusiness(biz.id);
+        return res.json({ message: 'Account deleted successfully' });
+    } catch (error: any) {
+        console.error('Delete account error:', error);
+        return res.status(500).json({ message: error.message || 'Failed to delete account' });
+    }
+};

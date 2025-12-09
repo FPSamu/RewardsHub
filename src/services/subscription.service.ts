@@ -96,11 +96,22 @@ export const activateSubscription = async (
         update.currentPeriodEnd = currentPeriodEnd;
     }
 
-    return await SubscriptionModel.findOneAndUpdate(
+    const subscription = await SubscriptionModel.findOneAndUpdate(
         { businessId },
         update,
         { new: true }
     );
+
+    // Update business status to active when subscription is activated
+    const { updateBusiness } = await import('./business.service');
+    try {
+        await updateBusiness(businessId, { status: 'active' });
+        console.log(`✅ Business ${businessId} status updated to active`);
+    } catch (err) {
+        console.error(`⚠️ Failed to update business status for ${businessId}:`, err);
+    }
+
+    return subscription;
 };
 
 /**

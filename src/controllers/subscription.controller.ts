@@ -186,20 +186,20 @@ export const getPlans = async (req: Request, res: Response) => {
             monthly: {
                 id: process.env.STRIPE_MONTHLY_PRICE_ID,
                 name: 'Monthly Plan',
-                price: 29.99, // Example price, ideally fetch from Stripe or config
-                currency: 'usd'
+                // price: 29.99, // Example price, ideally fetch from Stripe or config
+                // currency: 'usd'
             },
             yearly: {
                 id: process.env.STRIPE_YEARLY_PRICE_ID,
                 name: 'Yearly Plan',
-                price: 299.99,
-                currency: 'usd'
+                // price: 299.99,
+                // currency: 'usd'
             },
             lifetime: {
                 id: process.env.STRIPE_LIFETIME_PRICE_ID,
                 name: 'Lifetime Access',
-                price: 499.99,
-                currency: 'usd'
+                // price: 499.99,
+                // currency: 'usd'
             }
         });
     } catch (error) {
