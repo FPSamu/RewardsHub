@@ -255,6 +255,7 @@ export const findNearbyBusinesses = async (
             $lte: longitude + lngDelta,
         },
         'location': { $exists: true },
+        'isVerified': true
     };
 
     if (category) {
