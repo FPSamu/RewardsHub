@@ -20,7 +20,7 @@ const REFRESH_EXPIRES = process.env.REFRESH_EXPIRES || '7d';
  * On success returns 201 with a token and the newly created user (without passHash).
  */
 export const register = async (req: Request, res: Response) => {
-    const { username, email, password } = req.body as { username: string; email: string; password: string };
+    const { username, email, password } = req.body as { username: string, email: string, password: string };
     if (!username || !email || !password) {
         return res.status(400).json({ message: 'username, email and password are required' });
     }
@@ -28,7 +28,7 @@ export const register = async (req: Request, res: Response) => {
     const existing = await userService.findUserByEmail(email);
     if (existing) return res.status(409).json({ message: 'email already used' });
 
-    const user = await userService.createUs er(username, email, password);
+    const user = await userService.createUser(username, email, password);
     
     // Send verification email
     const crypto = await import('crypto');
@@ -46,7 +46,15 @@ export const register = async (req: Request, res: Response) => {
     const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     // store refresh token
     await userService.addRefreshToken(user.id, refreshToken);
-    return res.status(201).json({ user: { id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture, createdAt: user.createdAt }, token: accessToken, refreshToken });
+    return res.status(201).json({ 
+        user: { 
+            id: user.id, 
+            username: user.username, 
+            email: user.email, 
+            profilePicture: user.profilePicture, 
+            createdAt: user.createdAt 
+        }, 
+        token: accessToken, refreshToken });
 };
 
 /**
