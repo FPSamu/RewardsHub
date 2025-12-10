@@ -130,3 +130,70 @@ export const updateUserProfilePicture = async (userId: string, profilePictureUrl
     if (!doc) throw new Error('user not found');
     return toPublic(doc as IUser);
 };
+
+/**
+ * Generate email verification token and save to user
+ * @param userId - user document id
+ * @returns verification token
+ */
+export const generateVerificationToken = async (userId: string): Promise<string> => {
+    const crypto = await import('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    await UserModel.findByIdAndUpdate(userId, { verificationToken: token }).exec();
+    return token;
+};
+
+/**
+ * Verify user email with token
+ * @param token - verification token
+ * @returns user object if successful, undefined otherwise
+ */
+export const verifyUserEmail = async (token: string) => {
+    const doc = await UserModel.findOne({ verificationToken: token }).exec();
+    if (!doc) return undefined;
+    
+    doc.isVerified = true;
+    doc.verificationToken = undefined;
+    await doc.save();
+    return toPublic(doc as IUser);
+};
+
+/**
+ * Generate password reset token
+ * @param email - user email
+ * @returns reset token if user exists, undefined otherwise
+ */
+export const generatePasswordResetToken = async (email: string): Promise<string | undefined> => {
+    const doc = await UserModel.findOne({ email: email.toLowerCase() }).exec();
+    if (!doc) return undefined;
+    
+    const crypto = await import('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 3600000); // 1 hour
+    
+    doc.resetPasswordToken = token;
+    doc.resetPasswordExpires = expires;
+    await doc.save();
+    return token;
+};
+
+/**
+ * Reset password using token
+ * @param token - reset token
+ * @param newPassword - new plain password
+ * @returns user object if successful, undefined otherwise
+ */
+export const resetPassword = async (token: string, newPassword: string) => {
+    const doc = await UserModel.findOne({
+        resetPasswordToken: token,
+        resetPasswordExpires: { $gt: new Date() },
+    }).exec();
+    
+    if (!doc) return undefined;
+    
+    doc.passHash = await bcrypt.hash(newPassword, 10);
+    doc.resetPasswordToken = undefined;
+    doc.resetPasswordExpires = undefined;
+    await doc.save();
+    return toPublic(doc as IUser);
+};

@@ -26,6 +26,11 @@ router.get('/me', authenticate, authCtrl.me);
 router.put('/me', authenticate, authCtrl.updateMe);
 router.post('/profile-picture', authenticate, upload.single('profilePicture'), authCtrl.uploadProfilePicture);
 
+// Email verification and password reset
+router.get('/verify-email', authCtrl.verifyEmail);
+router.post('/forgot-password', authCtrl.forgotPassword);
+router.post('/reset-password', authCtrl.resetPassword);
+
 // Refresh and logout endpoints
 router.post('/refresh', authCtrl.refresh);
 router.post('/logout', authCtrl.logout);

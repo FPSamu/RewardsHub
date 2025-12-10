@@ -29,6 +29,19 @@ export const register = async (req: Request, res: Response) => {
     if (existing) return res.status(409).json({ message: 'email already used' });
 
     const user = await userService.createUser(username, email, password);
+    
+    // Send verification email
+    const crypto = await import('crypto');
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    await userService.generateVerificationToken(user.id);
+    
+    try {
+        const emailService = await import('../services/email.service');
+        await emailService.sendVerificationEmail(email, verificationToken, false);
+    } catch (error) {
+        console.error('Failed to send verification email:', error);
+    }
+    
     const accessToken = (jwt as any).sign({ sub: user.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     // store refresh token
@@ -219,4 +232,56 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
         console.error('Upload error:', error);
         return res.status(500).json({ message: 'failed to upload profile picture' });
     }
+};
+
+/**
+ * Verify user email
+ * GET /api/auth/verify-email?token=xxx
+ */
+export const verifyEmail = async (req: Request, res: Response) => {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ message: 'Token required' });
+
+    const user = await userService.verifyUserEmail(token as string);
+    if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
+
+    return res.json({ message: 'Email verified successfully' });
+};
+
+/**
+ * Request password reset
+ * POST /api/auth/forgot-password
+ * Expects { email } in body
+ */
+export const forgotPassword = async (req: Request, res: Response) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email required' });
+
+    const token = await userService.generatePasswordResetToken(email);
+    if (token) {
+        try {
+            const emailService = await import('../services/email.service');
+            await emailService.sendPasswordResetEmail(email, token);
+        } catch (error) {
+            console.error('Failed to send reset email:', error);
+            return res.status(500).json({ message: 'Failed to send email' });
+        }
+    }
+    // Always return success to prevent email enumeration
+    return res.json({ message: 'If an account exists, a reset email has been sent' });
+};
+
+/**
+ * Reset password with token
+ * POST /api/auth/reset-password
+ * Expects { token, password } in body
+ */
+export const resetPassword = async (req: Request, res: Response) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ message: 'Token and password required' });
+
+    const user = await userService.resetPassword(token, password);
+    if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
+
+    return res.json({ message: 'Password reset successfully' });
 };

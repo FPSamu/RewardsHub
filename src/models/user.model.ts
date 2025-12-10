@@ -10,6 +10,10 @@ export interface IUser extends Document {
     createdAt: Date;
     /** list of active refresh tokens (JWT strings) for this user */
     refreshTokens?: string[];
+    isVerified: boolean;
+    verificationToken?: string;
+    resetPasswordToken?: string;
+    resetPasswordExpires?: Date;
 }
 
 const userSchema = new Schema<IUser>(
@@ -20,6 +24,10 @@ const userSchema = new Schema<IUser>(
         profilePicture: { type: String },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
+        isVerified: { type: Boolean, default: false },
+        verificationToken: { type: String },
+        resetPasswordToken: { type: String },
+        resetPasswordExpires: { type: Date },
     },
     { timestamps: false }
 );

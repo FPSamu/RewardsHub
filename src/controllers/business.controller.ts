@@ -23,7 +23,7 @@ export const register = async (req: Request, res: Response) => {
     // Send verification email
     if (biz.verificationToken) {
         try {
-            await emailService.sendVerificationEmail(biz.email, biz.verificationToken);
+            await emailService.sendVerificationEmail(biz.email, biz.verificationToken, true);
         } catch (error) {
             console.error('Failed to send verification email:', error);
         }
@@ -52,7 +52,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
     const token = await businessService.generatePasswordResetToken(email);
     if (token) {
         try {
-            await emailService.sendPasswordResetEmail(email, token);
+            await emailService.sendPasswordResetEmail(email, token, true);
         } catch (error) {
             console.error('Failed to send reset email:', error);
             return res.status(500).json({ message: 'Failed to send email' });

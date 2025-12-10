@@ -28,9 +28,10 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
     }
 };
 
-export const sendVerificationEmail = async (to: string, token: string) => {
-    const verificationUrl = `${process.env.FRONTEND_URL}/business/verify-email?token=${token}`;
-    const subject = 'Verify your RewardsHub Business Account';
+export const sendVerificationEmail = async (to: string, token: string, isBusiness: boolean = false) => {
+    const accountType = isBusiness ? 'business' : 'user';
+    const verificationUrl = `${process.env.FRONTEND_URL}/${accountType}/verify-email?token=${token}`;
+    const subject = `Verify your RewardsHub ${isBusiness ? 'Business ' : ''}Account`;
     const html = `
         <h1>Welcome to RewardsHub!</h1>
         <p>Please verify your email address by clicking the link below:</p>
@@ -40,8 +41,9 @@ export const sendVerificationEmail = async (to: string, token: string) => {
     return sendEmail(to, subject, html);
 };
 
-export const sendPasswordResetEmail = async (to: string, token: string) => {
-    const resetUrl = `${process.env.FRONTEND_URL}/business/reset-password?token=${token}`;
+export const sendPasswordResetEmail = async (to: string, token: string, isBusiness: boolean = false) => {
+    const accountType = isBusiness ? 'business' : 'user';
+    const resetUrl = `${process.env.FRONTEND_URL}/${accountType}/reset-password?token=${token}`;
     const subject = 'Reset your RewardsHub Password';
     const html = `
         <h1>Password Reset Request</h1>
