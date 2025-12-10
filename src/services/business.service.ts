@@ -14,9 +14,10 @@ const toPublic = (doc: IBusiness) => ({
     logoUrl: doc.logoUrl,
     createdAt: doc.createdAt.toISOString(),
     isVerified: doc.isVerified,
+    category: doc.category,
 });
 
-export const createBusiness = async (name: string, email: string, password: string) => {
+export const createBusiness = async (name: string, email: string, password: string, category: string = 'food') => {
     const passHash = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const doc = await BusinessModel.create({ 
@@ -24,7 +25,8 @@ export const createBusiness = async (name: string, email: string, password: stri
         email: email.toLowerCase(), 
         passHash,
         verificationToken,
-        isVerified: false
+        isVerified: false,
+        category
     });
     // Return the full doc (or extended public object) so controller can access verificationToken
     return { ...toPublic(doc as IBusiness), verificationToken };
@@ -103,7 +105,7 @@ export const hasRefreshToken = async (businessId: string, token: string): Promis
  */
 export const updateBusiness = async (
     businessId: string,
-    updates: { name?: string; email?: string; status?: 'active' | 'inactive' }
+    updates: { name?: string; email?: string; status?: 'active' | 'inactive'; category?: string }
 ) => {
     const doc = await BusinessModel.findByIdAndUpdate(
         businessId,
@@ -229,19 +231,21 @@ export const updateBusinessLocation = async (businessId: string, addressString: 
  * @param latitude - Center latitude
  * @param longitude - Center longitude
  * @param maxDistanceKm - Maximum distance in kilometers (default: 10km)
+ * @param category - Optional category to filter by
  * @returns Array of nearby businesses
  */
 export const findNearbyBusinesses = async (
     latitude: number,
     longitude: number,
-    maxDistanceKm: number = 300
+    maxDistanceKm: number = 300,
+    category?: string
 ): Promise<any[]> => {
     // Simple distance calculation using lat/lng
     // 1 degree ≈ 111km, so we calculate a rough bounding box
     const latDelta = maxDistanceKm / 111;
     const lngDelta = maxDistanceKm / (111 * Math.cos(latitude * Math.PI / 180));
 
-    const businesses = await BusinessModel.find({
+    const query: any = {
         'location.latitude': {
             $gte: latitude - latDelta,
             $lte: latitude + latDelta,
@@ -251,7 +255,13 @@ export const findNearbyBusinesses = async (
             $lte: longitude + lngDelta,
         },
         'location': { $exists: true },
-    }).exec();
+    };
+
+    if (category) {
+        query.category = category;
+    }
+
+    const businesses = await BusinessModel.find(query).exec();
 
     // Calculate actual distances and filter
     const businessesWithDistance = businesses.map((doc) => {
@@ -303,4 +313,93 @@ export const deleteBusiness = async (businessId: string): Promise<void> => {
     }
 
     await BusinessModel.findByIdAndDelete(businessId).exec();
+};
+
+/**
+ * Find businesses within map bounds (bounding box)
+ * @param minLat - Minimum latitude
+ * @param maxLat - Maximum latitude
+ * @param minLng - Minimum longitude
+ * @param maxLng - Maximum longitude
+ * @param category - Optional category filter
+ * @returns Array of businesses within the bounds
+ */
+export const findBusinessesInBounds = async (
+    minLat: number,
+    maxLat: number,
+    minLng: number,
+    maxLng: number,
+    category?: string
+) => {
+    const query: any = {
+        'location.latitude': {
+            $gte: minLat,
+            $lte: maxLat,
+        },
+        'location.longitude': {
+            $gte: minLng,
+            $lte: maxLng,
+        },
+        'location': { $exists: true },
+        'status': 'active'
+    };
+
+    if (category) {
+        query.category = category;
+    }
+
+    const businesses = await BusinessModel.find(query).exec();
+
+    return businesses.map((doc) => toPublic(doc as IBusiness));
+};
+
+/**
+ * Get all businesses ordered by distance from user location
+ * @param latitude - User's latitude (optional)
+ * @param longitude - User's longitude (optional)
+ * @param limit - Maximum number of results (default: 100)
+ * @param category - Optional category filter
+ * @returns Array of all businesses, ordered by distance if coordinates provided
+ */
+export const getAllBusinesses = async (
+    latitude?: number,
+    longitude?: number,
+    limit: number = 100,
+    category?: string
+) => {
+    const query: any = {
+        'location': { $exists: true },
+        'status': 'active'
+    };
+
+    if (category) {
+        query.category = category;
+    }
+
+    const businesses = await BusinessModel.find(query).limit(limit).exec();
+
+    const businessList = businesses.map((doc) => toPublic(doc as IBusiness));
+
+    // If user location is provided, calculate distances and sort
+    if (latitude !== undefined && longitude !== undefined) {
+        const businessesWithDistance = businessList.map((biz) => {
+            if (biz.location) {
+                const distance = calculateDistance(
+                    latitude,
+                    longitude,
+                    biz.location.latitude,
+                    biz.location.longitude
+                );
+                return { ...biz, distance };
+            }
+            return { ...biz, distance: Infinity };
+        });
+
+        // Sort by distance (closest first)
+        businessesWithDistance.sort((a, b) => a.distance - b.distance);
+        return businessesWithDistance;
+    }
+
+    // Return without distance calculation if no user location
+    return businessList;
 };

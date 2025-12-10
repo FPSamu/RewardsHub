@@ -14,6 +14,7 @@ export interface Business {
     location?: ILocation;
     createdAt: string;
     logoUrl?: string;
+    category?: string;
 }
 
 declare global {

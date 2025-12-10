@@ -10,7 +10,7 @@ const ACCESS_EXPIRES = process.env.ACCESS_EXPIRES || '15m';
 const REFRESH_EXPIRES = process.env.REFRESH_EXPIRES || '7d';
 
 export const register = async (req: Request, res: Response) => {
-    const { name, email, password } = req.body as { name: string; email: string; password: string };
+    const { name, email, password, category } = req.body as { name: string; email: string; password: string; category?: string };
     if (!name || !email || !password) {
         return res.status(400).json({ message: 'name, email and password are required' });
     }
@@ -18,7 +18,7 @@ export const register = async (req: Request, res: Response) => {
     const existing = await businessService.findBusinessByEmail(email);
     if (existing) return res.status(409).json({ message: 'email already used' });
 
-    const biz = await businessService.createBusiness(name, email, password);
+    const biz = await businessService.createBusiness(name, email, password, category);
     
     // Send verification email
     if (biz.verificationToken) {
@@ -147,7 +147,8 @@ export const me = (req: Request, res: Response) => {
         address: biz.address,
         location: biz.location,
         createdAt: biz.createdAt,
-        logoUrl: biz.logoUrl
+        logoUrl: biz.logoUrl,
+        category: biz.category
     });
 };
 
@@ -159,10 +160,10 @@ export const updateBusiness = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
 
-    const { name, email } = req.body;
+    const { name, email, category } = req.body;
 
     try {
-        const updatedBusiness = await businessService.updateBusiness(biz.id, { name, email });
+        const updatedBusiness = await businessService.updateBusiness(biz.id, { name, email, category });
         return res.json(updatedBusiness);
     } catch (error: any) {
         if (error.code === 11000) {
@@ -307,10 +308,10 @@ export const updateCoordinates = async (req: Request, res: Response) => {
 
 /**
  * Find nearby businesses
- * Query params: latitude, longitude, maxDistanceKm (optional, default 10)
+ * Query params: latitude, longitude, maxDistanceKm (optional, default 10), category (optional)
  */
 export const getNearbyBusinesses = async (req: Request, res: Response) => {
-    const { latitude, longitude, maxDistanceKm } = req.query;
+    const { latitude, longitude, maxDistanceKm, category } = req.query;
 
     if (!latitude || !longitude) {
         return res.status(400).json({ message: 'latitude and longitude are required' });
@@ -325,7 +326,7 @@ export const getNearbyBusinesses = async (req: Request, res: Response) => {
     }
 
     try {
-        const businesses = await businessService.findNearbyBusinesses(lat, lng, maxDist);
+        const businesses = await businessService.findNearbyBusinesses(lat, lng, maxDist, category as string);
         
         return res.json({
             center: { latitude: lat, longitude: lng },
@@ -352,5 +353,125 @@ export const deleteAccount = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('Delete account error:', error);
         return res.status(500).json({ message: error.message || 'Failed to delete account' });
+    }
+};
+
+/**
+ * Get businesses within map bounds (for dynamic map rendering)
+ * GET /api/business/in-bounds?minLat=X&maxLat=Y&minLng=A&maxLng=B&category=food
+ */
+export const getBusinessesInBounds = async (req: Request, res: Response) => {
+    const { minLat, maxLat, minLng, maxLng, category } = req.query;
+
+    if (!minLat || !maxLat || !minLng || !maxLng) {
+        return res.status(400).json({ 
+            message: 'minLat, maxLat, minLng, and maxLng are required' 
+        });
+    }
+
+    const bounds = {
+        minLat: parseFloat(minLat as string),
+        maxLat: parseFloat(maxLat as string),
+        minLng: parseFloat(minLng as string),
+        maxLng: parseFloat(maxLng as string),
+    };
+
+    if (Object.values(bounds).some(isNaN)) {
+        return res.status(400).json({ message: 'invalid bounds coordinates' });
+    }
+
+    try {
+        const businesses = await businessService.findBusinessesInBounds(
+            bounds.minLat,
+            bounds.maxLat,
+            bounds.minLng,
+            bounds.maxLng,
+            category as string
+        );
+        
+        return res.json({
+            bounds,
+            count: businesses.length,
+            businesses,
+        });
+    } catch (error) {
+        console.error('Get businesses in bounds error:', error);
+        return res.status(500).json({ message: 'failed to get businesses' });
+    }
+};
+
+/**
+ * Get all businesses ordered by distance from user (for business list)
+ * GET /api/business/all?latitude=X&longitude=Y&limit=100&category=food
+ */
+export const getAllBusinesses = async (req: Request, res: Response) => {
+    const { latitude, longitude, limit, category } = req.query;
+
+    let lat: number | undefined;
+    let lng: number | undefined;
+    let maxLimit = 100;
+
+    if (latitude && longitude) {
+        lat = parseFloat(latitude as string);
+        lng = parseFloat(longitude as string);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            return res.status(400).json({ message: 'invalid coordinates' });
+        }
+    }
+
+    if (limit) {
+        maxLimit = parseInt(limit as string, 10);
+        if (isNaN(maxLimit) || maxLimit < 1) {
+            maxLimit = 100;
+        }
+    }
+
+    try {
+        const businesses = await businessService.getAllBusinesses(lat, lng, maxLimit, category as string);
+        
+        return res.json({
+            userLocation: lat && lng ? { latitude: lat, longitude: lng } : null,
+            count: businesses.length,
+            businesses,
+        });
+    } catch (error) {
+        console.error('Get all businesses error:', error);
+        return res.status(500).json({ message: 'failed to get businesses' });
+    }
+};
+
+/**
+ * Get list of available business categories
+ * GET /api/business/categories
+ */
+export const getCategories = (req: Request, res: Response) => {
+    const categories = ['food', 'retail', 'services', 'entertainment', 'other'];
+    return res.json(categories);
+};
+
+/**
+ * Get businesses by specific category
+ * GET /api/business/category/:category
+ */
+export const getBusinessesByCategory = async (req: Request, res: Response) => {
+    const { category } = req.params;
+    
+    if (!category) {
+        return res.status(400).json({ message: 'category is required' });
+    }
+
+    try {
+        // Reuse the service method with no location (unless passed in query, but let's keep it simple for this route)
+        const businesses = await businessService.getAllBusinesses(undefined, undefined, 100, category);
+        
+        return res.json({
+            category,
+            count: businesses.length,
+            businesses,
+        });
+    } catch (error) {
+        console.error('Get businesses by category error:', error);
+        return res.status(500).json({ message: 'failed to get businesses' });
     }
 };

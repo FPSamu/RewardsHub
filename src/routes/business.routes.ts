@@ -32,6 +32,12 @@ router.post('/send-reminder', authenticateBusiness, businessCtrl.sendRewardRemin
 router.put('/location', authenticateBusiness, businessCtrl.updateLocation);
 router.put('/coordinates', authenticateBusiness, businessCtrl.updateCoordinates);
 router.get('/nearby', businessCtrl.getNearbyBusinesses);
+router.get('/in-bounds', businessCtrl.getBusinessesInBounds);
+router.get('/all', businessCtrl.getAllBusinesses);
+
+// Category endpoints
+router.get('/categories', businessCtrl.getCategories);
+router.get('/category/:category', businessCtrl.getBusinessesByCategory);
 
 // Get business by ID (must be last to avoid route conflicts)
 router.get('/:id', businessCtrl.getBusinessById);
