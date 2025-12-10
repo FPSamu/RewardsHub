@@ -5,12 +5,11 @@ export interface IUser extends Document {
     _id: any;
     username: string;
     email: string;
-    passHash: string; // hashed password (never returned in JSON)
-    profilePicture?: string; // S3 URL of profile picture
-    createdAt: Date;
-    /** list of active refresh tokens (JWT strings) for this user */
-    refreshTokens?: string[];
+    passHash: string; 
+    profilePicture?: string; 
     isVerified: boolean;
+    createdAt: Date;
+    refreshTokens?: string[];
     verificationToken?: string;
     resetPasswordToken?: string;
     resetPasswordExpires?: Date;

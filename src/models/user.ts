@@ -13,6 +13,6 @@ export interface User {
     email: string;
     passHash: string;
     profilePicture?: string;
-    isVerified?: boolean;
+    isVerified: boolean;
     createdAt: string;
 }

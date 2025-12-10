@@ -50,6 +50,7 @@ export const register = async (req: Request, res: Response) => {
             username: user.username, 
             email: user.email, 
             profilePicture: user.profilePicture, 
+            isVerified: user.isVerified,
             createdAt: user.createdAt 
         }, 
         token: accessToken, refreshToken });

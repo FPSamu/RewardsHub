@@ -19,6 +19,7 @@ const toPublic = (doc: IUser) => ({
     email: doc.email,
     passHash: doc.passHash,
     profilePicture: doc.profilePicture,
+    isVerified: doc.isVerified,
     createdAt: doc.createdAt.toISOString(),
 });
 
