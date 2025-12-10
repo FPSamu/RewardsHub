@@ -1,3 +1,4 @@
+import { Request, Response, NextFunction } from 'express';
 import { RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import * as userService from '../services/user.service';
@@ -19,4 +20,22 @@ export const authenticate: RequestHandler = async (req, res, next) => {
     } catch (err) {
         return res.status(401).json({ message: 'invalid token' });
     }
+};
+
+export const requireVerification = (req: Request, res: Response, next: NextFunction) => {
+    // Asumimos que 'authenticate' ya corrió y req.user existe
+    const user = (req as any).user;
+
+    if (!user) {
+        return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    if (!user.isVerified) {
+        return res.status(403).json({ 
+            message: 'Email verification required',
+            code: 'VERIFICATION_REQUIRED' // Código útil para el frontend
+        });
+    }
+
+    next();
 };
