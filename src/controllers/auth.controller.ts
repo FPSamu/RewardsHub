@@ -31,8 +31,6 @@ export const register = async (req: Request, res: Response) => {
     const user = await userService.createUser(username, email, password);
     
     // Send verification email
-    const crypto = await import('crypto');
-    // const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationToken = await userService.generateVerificationToken(user.id);
     
     try {
@@ -126,7 +124,14 @@ export const logout = async (req: Request, res: Response) => {
 export const me = (req: Request, res: Response) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'not authenticated' });
-    return res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture, createdAt: user.createdAt });
+    return res.json({ 
+        id: user.id, 
+        username: user.username, 
+        email: user.email, 
+        profilePicture: user.profilePicture, 
+        createdAt: user.createdAt, 
+        isVerified: user.isVerified 
+    });
 };
 
 /**
@@ -254,6 +259,21 @@ export const verifyEmail = async (req: Request, res: Response) => {
     if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
 
     return res.json({ message: 'Email verified successfully' });
+};
+
+export const resendVerification = async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    if (user.isVerified) return res.status(400).json({ message: 'Already verified' });
+
+    const token = await userService.generateVerificationToken(user.id);
+    
+    try {
+        const emailService = await import('../services/email.service');
+        await emailService.sendVerificationEmail(user.email, token, false); // false = user account
+        return res.json({ message: 'Verification email sent' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Failed to send email' });
+    }
 };
 
 /**

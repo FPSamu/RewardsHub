@@ -28,6 +28,7 @@ router.post('/profile-picture', authenticate, upload.single('profilePicture'), a
 
 // Email verification and password reset
 router.get('/verify-email', authCtrl.verifyEmail);
+router.post('/resend-verification', authenticate, authCtrl.resendVerification);
 router.post('/forgot-password', authCtrl.forgotPassword);
 router.post('/reset-password', authCtrl.resetPassword);
 
