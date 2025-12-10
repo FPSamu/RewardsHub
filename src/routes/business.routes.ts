@@ -20,6 +20,14 @@ router.post('/logo', authenticateBusiness, upload.single('logo'), businessCtrl.u
 router.post('/refresh', businessCtrl.refresh);
 router.post('/logout', businessCtrl.logout);
 
+// Email verification and password reset
+router.get('/verify-email', businessCtrl.verifyEmail);
+router.post('/forgot-password', businessCtrl.forgotPassword);
+router.post('/reset-password', businessCtrl.resetPassword);
+
+// Marketing emails
+router.post('/send-reminder', authenticateBusiness, businessCtrl.sendRewardReminder);
+
 // Location endpoints
 router.put('/location', authenticateBusiness, businessCtrl.updateLocation);
 router.put('/coordinates', authenticateBusiness, businessCtrl.updateCoordinates);

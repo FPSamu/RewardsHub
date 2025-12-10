@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as businessService from '../services/business.service';
 import * as uploadService from '../services/upload.service';
+import * as emailService from '../services/email.service';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
@@ -18,10 +19,73 @@ export const register = async (req: Request, res: Response) => {
     if (existing) return res.status(409).json({ message: 'email already used' });
 
     const biz = await businessService.createBusiness(name, email, password);
+    
+    // Send verification email
+    if (biz.verificationToken) {
+        try {
+            await emailService.sendVerificationEmail(biz.email, biz.verificationToken);
+        } catch (error) {
+            console.error('Failed to send verification email:', error);
+        }
+    }
+
     const accessToken = (jwt as any).sign({ sub: biz.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: biz.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await businessService.addRefreshToken(biz.id, refreshToken);
     return res.status(201).json({ business: { id: biz.id, name: biz.name, email: biz.email, createdAt: biz.createdAt }, token: accessToken, refreshToken });
+};
+
+export const verifyEmail = async (req: Request, res: Response) => {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ message: 'Token required' });
+
+    const biz = await businessService.verifyBusinessEmail(token as string);
+    if (!biz) return res.status(400).json({ message: 'Invalid or expired token' });
+
+    return res.json({ message: 'Email verified successfully' });
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email required' });
+
+    const token = await businessService.generatePasswordResetToken(email);
+    if (token) {
+        try {
+            await emailService.sendPasswordResetEmail(email, token);
+        } catch (error) {
+            console.error('Failed to send reset email:', error);
+            return res.status(500).json({ message: 'Failed to send email' });
+        }
+    }
+    // Always return success to prevent email enumeration
+    return res.json({ message: 'If an account exists, a reset email has been sent' });
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ message: 'Token and password required' });
+
+    const biz = await businessService.resetPassword(token, password);
+    if (!biz) return res.status(400).json({ message: 'Invalid or expired token' });
+
+    return res.json({ message: 'Password reset successfully' });
+};
+
+export const sendRewardReminder = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'Not authenticated' });
+
+    const { userEmail, rewardTitle, message } = req.body;
+    if (!userEmail || !rewardTitle) return res.status(400).json({ message: 'User email and reward title required' });
+
+    try {
+        await emailService.sendRewardReminderEmail(userEmail, biz.name, rewardTitle, message);
+        return res.json({ message: 'Reminder sent successfully' });
+    } catch (error) {
+        console.error('Failed to send reminder:', error);
+        return res.status(500).json({ message: 'Failed to send reminder' });
+    }
 };
 
 export const login = async (req: Request, res: Response) => {

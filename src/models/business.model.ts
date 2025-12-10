@@ -24,6 +24,10 @@ export interface IBusiness extends Document {
     logoUrl?: string;
     createdAt: Date;
     refreshTokens?: string[];
+    isVerified: boolean;
+    verificationToken?: string;
+    resetPasswordToken?: string;
+    resetPasswordExpires?: Date;
 }
 
 const locationSchema = new Schema<ILocation>(
@@ -47,6 +51,10 @@ const businessSchema = new Schema<IBusiness>(
         logoUrl: { type: String },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
+        isVerified: { type: Boolean, default: false },
+        verificationToken: { type: String },
+        resetPasswordToken: { type: String },
+        resetPasswordExpires: { type: Date },
     },
     { timestamps: false }
 );

@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { BusinessModel, IBusiness, ILocation } from '../models/business.model';
 import * as geocodingService from './geocoding.service';
 
@@ -12,11 +13,58 @@ const toPublic = (doc: IBusiness) => ({
     location: doc.location,
     logoUrl: doc.logoUrl,
     createdAt: doc.createdAt.toISOString(),
+    isVerified: doc.isVerified,
 });
 
 export const createBusiness = async (name: string, email: string, password: string) => {
     const passHash = await bcrypt.hash(password, 10);
-    const doc = await BusinessModel.create({ name, email: email.toLowerCase(), passHash });
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const doc = await BusinessModel.create({ 
+        name, 
+        email: email.toLowerCase(), 
+        passHash,
+        verificationToken,
+        isVerified: false
+    });
+    // Return the full doc (or extended public object) so controller can access verificationToken
+    return { ...toPublic(doc as IBusiness), verificationToken };
+};
+
+export const verifyBusinessEmail = async (token: string) => {
+    const doc = await BusinessModel.findOne({ verificationToken: token }).exec();
+    if (!doc) return null;
+    
+    doc.isVerified = true;
+    doc.verificationToken = undefined;
+    await doc.save();
+    return toPublic(doc as IBusiness);
+};
+
+export const generatePasswordResetToken = async (email: string) => {
+    const doc = await BusinessModel.findOne({ email: email.toLowerCase() }).exec();
+    if (!doc) return null;
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    doc.resetPasswordToken = resetToken;
+    doc.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+    await doc.save();
+    
+    return resetToken;
+};
+
+export const resetPassword = async (token: string, newPassword: string) => {
+    const doc = await BusinessModel.findOne({
+        resetPasswordToken: token,
+        resetPasswordExpires: { $gt: new Date() }
+    }).exec();
+
+    if (!doc) return null;
+
+    doc.passHash = await bcrypt.hash(newPassword, 10);
+    doc.resetPasswordToken = undefined;
+    doc.resetPasswordExpires = undefined;
+    await doc.save();
+
     return toPublic(doc as IBusiness);
 };
 
