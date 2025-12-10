@@ -28,7 +28,7 @@ export const register = async (req: Request, res: Response) => {
     const existing = await userService.findUserByEmail(email);
     if (existing) return res.status(409).json({ message: 'email already used' });
 
-    const user = await userService.createUser(username, email, password);
+    const user = await userService.createUs er(username, email, password);
     
     // Send verification email
     const crypto = await import('crypto');
