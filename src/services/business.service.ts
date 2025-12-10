@@ -32,6 +32,13 @@ export const createBusiness = async (name: string, email: string, password: stri
     return { ...toPublic(doc as IBusiness), verificationToken };
 };
 
+export const generateVerificationToken = async (userId: string): Promise<string> => {
+    const crypto = await import('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    await BusinessModel.findByIdAndUpdate(userId, { verificationToken: token }).exec();
+    return token;
+};
+
 export const verifyBusinessEmail = async (token: string) => {
     const doc = await BusinessModel.findOne({ verificationToken: token }).exec();
     if (!doc) return null;

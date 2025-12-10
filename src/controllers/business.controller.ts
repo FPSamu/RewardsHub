@@ -19,20 +19,29 @@ export const register = async (req: Request, res: Response) => {
     if (existing) return res.status(409).json({ message: 'email already used' });
 
     const biz = await businessService.createBusiness(name, email, password, category);
+
+    const verificationToken = await businessService.generateVerificationToken(biz.id);
     
     // Send verification email
-    if (biz.verificationToken) {
-        try {
-            await emailService.sendVerificationEmail(biz.email, biz.verificationToken, true);
-        } catch (error) {
-            console.error('Failed to send verification email:', error);
-        }
+    try {
+        await emailService.sendVerificationEmail(biz.email, verificationToken, true); 
+    } catch (error) {
+        console.error('Failed to send email', error);
     }
 
     const accessToken = (jwt as any).sign({ sub: biz.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: biz.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await businessService.addRefreshToken(biz.id, refreshToken);
-    return res.status(201).json({ business: { id: biz.id, name: biz.name, email: biz.email, createdAt: biz.createdAt }, token: accessToken, refreshToken });
+    return res.status(201).json({ 
+        business: { 
+            id: biz.id, 
+            name: biz.name, 
+            email: biz.email, 
+            isVerified: biz.isVerified,
+            createdAt: biz.createdAt 
+        }, 
+        token: accessToken, refreshToken 
+    });
 };
 
 export const verifyEmail = async (req: Request, res: Response) => {
