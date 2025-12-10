@@ -32,8 +32,8 @@ export const register = async (req: Request, res: Response) => {
     
     // Send verification email
     const crypto = await import('crypto');
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    await userService.generateVerificationToken(user.id);
+    // const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationToken = await userService.generateVerificationToken(user.id);
     
     try {
         const emailService = await import('../services/email.service');
