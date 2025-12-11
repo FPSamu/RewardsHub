@@ -162,15 +162,29 @@ export const updatePointsSystem = async (
         const { name, description, isActive, pointsConversion } = req.body;
 
         const updates: any = {};
+
         if (name !== undefined) updates.name = name;
         if (description !== undefined) updates.description = description;
         if (isActive !== undefined) updates.isActive = isActive;
-        if (pointsConversion !== undefined) updates.pointsConversion = pointsConversion;
+
+        if (pointsConversion) {
+            if (
+                !pointsConversion.amount ||
+                !pointsConversion.currency ||
+                !pointsConversion.points
+            ) {
+                res.status(400).json({
+                    message: 'pointsConversion must include amount, currency, and points',
+                });
+                return;
+            }
+            updates.pointsConversion = pointsConversion;
+        }
 
         const system = await systemService.updatePointsSystem(systemId, businessId, updates);
 
         if (!system) {
-            res.status(404).json({ message: 'Points system not found' });
+            res.status(404).json({ message: 'Points system not found or access denied' });
             return;
         }
 
