@@ -113,9 +113,12 @@ export const login = async (req: Request, res: Response) => {
     const refreshToken = (jwt as any).sign({ sub: biz.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await businessService.addRefreshToken(biz.id, refreshToken);
     return res.json({ 
-        token: accessToken, 
-        refreshToken, 
-        isVerified: biz.isVerified 
+        user: {
+            token: accessToken, 
+            refreshToken, 
+            role: 'business',
+            isVerified: biz.isVerified 
+        }
     });
 };
 
