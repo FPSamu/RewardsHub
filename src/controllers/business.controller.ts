@@ -46,12 +46,14 @@ export const register = async (req: Request, res: Response) => {
 
 export const verifyEmail = async (req: Request, res: Response) => {
     const { token } = req.query;
+    
     if (!token) return res.status(400).json({ message: 'Token required' });
 
-    const biz = await businessService.verifyBusinessEmail(token as string);
-    if (!biz) return res.status(400).json({ message: 'Invalid or expired token' });
+    const business = await businessService.verifyBusinessEmail(token as string);
+    
+    if (!business) return res.status(400).json({ message: 'Invalid or expired token' });
 
-    return res.json({ message: 'Email verified successfully' });
+    return res.json({ message: 'Email verified successfully', user: business });
 };
 
 export const forgotPassword = async (req: Request, res: Response) => {

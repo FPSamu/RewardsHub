@@ -41,12 +41,20 @@ export const generateVerificationToken = async (userId: string): Promise<string>
 
 export const verifyBusinessEmail = async (token: string) => {
     const doc = await BusinessModel.findOne({ verificationToken: token }).exec();
-    if (!doc) return null;
+    
+    if (!doc) return undefined;
     
     doc.isVerified = true;
     doc.verificationToken = undefined;
     await doc.save();
-    return toPublic(doc as IBusiness);
+    
+    return {
+        id: doc.id,
+        name: doc.name,
+        email: doc.email,
+        isVerified: doc.isVerified,
+        role: 'business'
+    };
 };
 
 export const generatePasswordResetToken = async (email: string) => {
