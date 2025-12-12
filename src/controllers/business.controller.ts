@@ -166,7 +166,7 @@ export const me = (req: Request, res: Response) => {
         email: biz.email, 
         status: biz.status,
         address: biz.address,
-        location: biz.location,
+        locations: biz.locations,
         createdAt: biz.createdAt,
         logoUrl: biz.logoUrl,
         category: biz.category

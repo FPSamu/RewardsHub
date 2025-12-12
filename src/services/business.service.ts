@@ -10,7 +10,7 @@ const toPublic = (doc: IBusiness) => ({
     passHash: doc.passHash,
     status: doc.status,
     address: doc.address,
-    locations: doc.locations,
+    locations: doc.locations || [],
     logoUrl: doc.logoUrl,
     createdAt: doc.createdAt.toISOString(),
     isVerified: doc.isVerified,

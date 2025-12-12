@@ -11,7 +11,7 @@ export interface Business {
     passHash: string;
     status: 'active' | 'inactive';
     address?: string;
-    location?: ILocation;
+    locations?: ILocation[];
     createdAt: string;
     logoUrl?: string;
     category?: string;
