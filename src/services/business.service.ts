@@ -116,16 +116,31 @@ export const hasRefreshToken = async (businessId: string, token: string): Promis
     return !!doc;
 };
 
-export const addBranch = async (businessId: string, addressString: string, branchName?: string) => {
-    const geo = await geocodingService.geocodeAddress(addressString);
-    
+export const addBranch = async (
+    businessId: string, 
+    addressString: string, 
+    branchName?: string,
+    lat?: number, 
+    lng?: number  
+) => {
+    let latitude = lat;
+    let longitude = lng;
+    let formattedAddress = '';
+
+    if (latitude === undefined || longitude === undefined) {
+        const geo = await geocodingService.geocodeAddress(addressString);
+        latitude = geo.latitude;
+        longitude = geo.longitude;
+        formattedAddress = geo.displayName;
+    }
+
     const newLocation = {
-        name: branchName || 'Sucursal Principal',
+        name: branchName || 'Sucursal',
         address: addressString,
-        formattedAddress: geo.displayName,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
-        isMain: false 
+        formattedAddress: formattedAddress,
+        latitude: latitude!,
+        longitude: longitude!,
+        isMain: false
     };
 
     const business = await BusinessModel.findById(businessId);
@@ -207,7 +222,7 @@ export const updateBusinessLogo = async (businessId: string, logoUrl: string) =>
 export const updateBranch = async (
     businessId: string, 
     locationId: string, 
-    updates: { address?: string; name?: string; isMain?: boolean }
+    updates: { address?: string; name?: string; isMain?: boolean; latitude?: number; longitude?: number }
 ) => {
     const business = await BusinessModel.findById(businessId);
     if (!business) throw new Error('Business not found');
@@ -217,6 +232,18 @@ export const updateBranch = async (
     if (!location) throw new Error('Location not found');
 
     if (updates.name) location.name = updates.name;
+
+    if (updates.latitude !== undefined && updates.longitude !== undefined) {
+        location.latitude = updates.latitude;
+        location.longitude = updates.longitude;
+        if (updates.address) location.address = updates.address; 
+    } else if (updates.address && updates.address !== location.address) {
+        const geo = await geocodingService.geocodeAddress(updates.address);
+        location.address = updates.address;
+        location.formattedAddress = geo.displayName;
+        location.latitude = geo.latitude;
+        location.longitude = geo.longitude;
+    }
 
     if (updates.address && updates.address !== location.address) {
         const geo = await geocodingService.geocodeAddress(updates.address);

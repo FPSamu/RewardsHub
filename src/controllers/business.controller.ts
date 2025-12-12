@@ -264,56 +264,19 @@ export const updateLocation = async (req: Request, res: Response) => {
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
     
     const { locationId } = req.params;
-    const { address, name, isMain } = req.body;
+    const { address, name, isMain, latitude, longitude } = req.body;
 
     try {
-        const updatedBiz = await businessService.updateBranch(biz.id, locationId, { address, name, isMain });
+        const updatedBiz = await businessService.updateBranch(
+            biz.id, 
+            locationId, 
+            { address, name, isMain, latitude, longitude }
+        );
         return res.json(updatedBiz);
     } catch (error: any) {
         return res.status(500).json({ message: error.message || 'failed to update location' });
     }
-}
-
-
-
-/**
- * Update business coordinates
- * Expects { latitude: number, longitude: number }
- * Used when user adjusts marker position in frontend map
- */
-// export const updateCoordinates = async (req: Request, res: Response) => {
-//     const biz = req.business;
-//     if (!biz) return res.status(401).json({ message: 'not authenticated' });
-
-//     const { latitude, longitude } = req.body as { latitude?: number; longitude?: number };
-
-//     if (latitude === undefined || longitude === undefined) {
-//         return res.status(400).json({ message: 'latitude and longitude are required' });
-//     }
-
-//     if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-//         return res.status(400).json({ message: 'latitude and longitude must be numbers' });
-//     }
-
-//     try {
-//         const updatedBusiness = await businessService.updateBusinessCoordinates(biz.id, latitude, longitude);
-        
-//         return res.json({
-//             message: 'Coordinates updated successfully',
-//             business: {
-//                 id: updatedBusiness.id,
-//                 name: updatedBusiness.name,
-//                 address: updatedBusiness.address,
-//                 location: updatedBusiness.location,
-//             },
-//         });
-//     } catch (error: any) {
-//         if (error.message) {
-//             return res.status(400).json({ message: error.message });
-//         }
-//         return res.status(500).json({ message: 'failed to update coordinates' });
-//     }
-// };
+};
 
 /**
  * Find nearby businesses
@@ -489,11 +452,11 @@ export const addLocation = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
 
-    const { address, name } = req.body;
+    const { address, name, latitude, longitude } = req.body;
     if (!address) return res.status(400).json({ message: 'address is required' });
 
     try {
-        const updatedBiz = await businessService.addBranch(biz.id, address, name);
+        const updatedBiz = await businessService.addBranch(biz.id, address, name, latitude, longitude);
         return res.json(updatedBiz);
     } catch (error: any) {
         return res.status(500).json({ message: error.message || 'failed to add location' });
