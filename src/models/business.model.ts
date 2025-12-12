@@ -7,10 +7,13 @@
 import { Schema, model, Document } from 'mongoose';
 
 export interface ILocation {
-    address: string; // Format: calle-numero-ciudad-estado-pais
+    _id?: any;
+    name?: string;
+    address: string;
     latitude: number;
     longitude: number;
     formattedAddress?: string;
+    isMain?: boolean; 
 }
 
 export interface IBusiness extends Document {
@@ -20,7 +23,7 @@ export interface IBusiness extends Document {
     passHash: string;
     status: 'active' | 'inactive';
     address?: string;
-    location?: ILocation;
+    locations?: ILocation[];
     logoUrl?: string;
     createdAt: Date;
     refreshTokens?: string[];
@@ -33,12 +36,13 @@ export interface IBusiness extends Document {
 
 const locationSchema = new Schema<ILocation>(
     {
+        name: { type: String },
         address: { type: String, required: true },
         latitude: { type: Number, required: true },
         longitude: { type: Number, required: true },
         formattedAddress: { type: String },
-    },
-    { _id: false }
+        isMain: { type: Boolean, default: false }
+    }
 );
 
 const businessSchema = new Schema<IBusiness>(
@@ -47,8 +51,8 @@ const businessSchema = new Schema<IBusiness>(
         email: { type: String, required: true, unique: true, index: true },
         passHash: { type: String, required: true },
         status: { type: String, enum: ['active', 'inactive'], default: 'inactive' },
-        address: { type: String },
-        location: { type: locationSchema },
+        // address: { type: String },
+        locations: { type: [locationSchema], default: [] },        
         logoUrl: { type: String },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
@@ -65,8 +69,7 @@ const businessSchema = new Schema<IBusiness>(
     { timestamps: false }
 );
 
-// Geospatial index for location-based queries
-businessSchema.index({ 'location.latitude': 1, 'location.longitude': 1 });
+businessSchema.index({ 'locations.latitude': 1, 'locations.longitude': 1 });
 
 businessSchema.virtual('id').get(function (this: IBusiness) {
     return this._id.toString();

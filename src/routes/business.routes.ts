@@ -29,11 +29,12 @@ router.post('/reset-password', businessCtrl.resetPassword);
 router.post('/send-reminder', authenticateBusiness, businessCtrl.sendRewardReminder);
 
 // Location endpoints
-router.put('/location', authenticateBusiness, businessCtrl.updateLocation);
-router.put('/coordinates', authenticateBusiness, businessCtrl.updateCoordinates);
+router.put('/locations/:locationId', authenticateBusiness, businessCtrl.updateLocation);
 router.get('/nearby', businessCtrl.getNearbyBusinesses);
 router.get('/in-bounds', businessCtrl.getBusinessesInBounds);
 router.get('/all', businessCtrl.getAllBusinesses);
+router.post('/locations', authenticateBusiness, businessCtrl.addLocation);
+router.delete('/locations/:locationId', authenticateBusiness, businessCtrl.removeLocation);
 
 // Category endpoints
 router.get('/categories', businessCtrl.getCategories);

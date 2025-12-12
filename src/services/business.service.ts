@@ -10,11 +10,14 @@ const toPublic = (doc: IBusiness) => ({
     passHash: doc.passHash,
     status: doc.status,
     address: doc.address,
-    location: doc.location,
+    locations: doc.locations,
     logoUrl: doc.logoUrl,
     createdAt: doc.createdAt.toISOString(),
     isVerified: doc.isVerified,
     category: doc.category,
+    mainLocation: doc.locations && doc.locations.length > 0
+        ? doc.locations.find(l => l.isMain) || doc.locations[0]
+        : undefined,
 });
 
 export const createBusiness = async (name: string, email: string, password: string, category: string = 'food') => {
@@ -26,6 +29,7 @@ export const createBusiness = async (name: string, email: string, password: stri
         passHash,
         verificationToken,
         isVerified: false,
+        locations: [],
         category
     });
     // Return the full doc (or extended public object) so controller can access verificationToken
@@ -112,6 +116,51 @@ export const hasRefreshToken = async (businessId: string, token: string): Promis
     return !!doc;
 };
 
+export const addBranch = async (businessId: string, addressString: string, branchName?: string) => {
+    const geo = await geocodingService.geocodeAddress(addressString);
+    
+    const newLocation = {
+        name: branchName || 'Sucursal Principal',
+        address: addressString,
+        formattedAddress: geo.displayName,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        isMain: false 
+    };
+
+    const business = await BusinessModel.findById(businessId);
+    if (!business) throw new Error('Business not found');
+
+    if (business.locations && business.locations.length === 0) newLocation.isMain = true;
+
+    if (!business.locations) {
+        business.locations = [];
+    }
+    business.locations.push(newLocation);
+    await business.save();
+
+    return toPublic(business);
+};
+
+export const removeBranch = async (businessId: string, locationId: string) => {
+    const business = await BusinessModel.findById(businessId);
+    if (!business) throw new Error('Business not found');
+
+    if (business.locations) {
+        business.locations = business.locations.filter(l => (l as any)._id.toString() !== locationId);
+    } else {
+        business.locations = [];
+    }
+    
+    // Si borramos la principal y quedan otras, asignamos una nueva principal
+    if (business.locations.length > 0 && !business.locations.some(l => l.isMain)) {
+        business.locations[0].isMain = true;
+    }
+
+    await business.save();
+    return toPublic(business);
+};
+
 /**
  * Update business information
  * @param businessId - The business ID
@@ -155,51 +204,35 @@ export const updateBusinessLogo = async (businessId: string, logoUrl: string) =>
     return toPublic(doc as IBusiness);
 };
 
-/**
- * Update business coordinates directly
- * @param businessId - The business ID
- * @param latitude - Latitude coordinate
- * @param longitude - Longitude coordinate
- * @returns Updated business object
- */
-export const updateBusinessCoordinates = async (
-    businessId: string,
-    latitude: number,
-    longitude: number
+export const updateBranch = async (
+    businessId: string, 
+    locationId: string, 
+    updates: { address?: string; name?: string; isMain?: boolean }
 ) => {
-    // Validate coordinates
-    if (latitude < -90 || latitude > 90) {
-        throw new Error('Invalid latitude. Must be between -90 and 90.');
-    }
-    if (longitude < -180 || longitude > 180) {
-        throw new Error('Invalid longitude. Must be between -180 and 180.');
-    }
+    const business = await BusinessModel.findById(businessId);
+    if (!business) throw new Error('Business not found');
 
-    // Get current business to preserve address
-    const currentBusiness = await BusinessModel.findById(businessId).exec();
-    if (!currentBusiness) {
-        throw new Error('Business not found');
-    }
+    if (!business.locations) throw new Error('No locations found for this business');
+    const location = business.locations.find(l => l._id && l._id.toString() === locationId);
+    if (!location) throw new Error('Location not found');
 
-    // Update only coordinates, preserving the address
-    const updatedLocation: ILocation = {
-        address: currentBusiness.location?.address || currentBusiness.address || '',
-        latitude,
-        longitude,
-        formattedAddress: currentBusiness.location?.formattedAddress,
-    };
+    if (updates.name) location.name = updates.name;
 
-    const doc = await BusinessModel.findByIdAndUpdate(
-        businessId,
-        { location: updatedLocation },
-        { new: true }
-    ).exec();
-
-    if (!doc) {
-        throw new Error('Business not found');
+    if (updates.address && updates.address !== location.address) {
+        const geo = await geocodingService.geocodeAddress(updates.address);
+        location.address = updates.address;
+        location.formattedAddress = geo.displayName;
+        location.latitude = geo.latitude;
+        location.longitude = geo.longitude;
     }
 
-    return toPublic(doc as IBusiness);
+    if (updates.isMain !== undefined && updates.isMain) {
+        business.locations.forEach(l => l.isMain = false);
+        location.isMain = true;
+    }
+
+    await business.save();
+    return toPublic(business);
 };
 
 /**
@@ -208,38 +241,6 @@ export const updateBusinessCoordinates = async (
  * @param addressString - Address in format "calle-numero-ciudad-estado-pais"
  * @returns Updated business object
  */
-export const updateBusinessLocation = async (businessId: string, addressString: string) => {
-    // Validate address format
-    if (!geocodingService.validateAddressFormat(addressString)) {
-        throw new Error('Invalid address format. Expected: calle-numero-ciudad-estado-pais');
-    }
-
-    // Geocode the address
-    const geocodingResult = await geocodingService.geocodeAddress(addressString);
-
-    // Update business with location
-    const location: ILocation = {
-        address: addressString,
-        latitude: geocodingResult.latitude,
-        longitude: geocodingResult.longitude,
-        formattedAddress: geocodingResult.displayName,
-    };
-
-    const doc = await BusinessModel.findByIdAndUpdate(
-        businessId,
-        { 
-            address: addressString,
-            location 
-        },
-        { new: true }
-    ).exec();
-
-    if (!doc) {
-        throw new Error('Business not found');
-    }
-
-    return toPublic(doc as IBusiness);
-};
 
 /**
  * Find businesses near a specific location
@@ -261,15 +262,19 @@ export const findNearbyBusinesses = async (
     const lngDelta = maxDistanceKm / (111 * Math.cos(latitude * Math.PI / 180));
 
     const query: any = {
-        'location.latitude': {
-            $gte: latitude - latDelta,
-            $lte: latitude + latDelta,
+        'locations': {
+            $elemMatch: {
+                'latitude': { 
+                    $gte: latitude - latDelta, 
+                    $lte: latitude + latDelta
+                },
+                'longitude': {
+                    $gte: longitude - lngDelta, 
+                    $lte: longitude + lngDelta
+                }
+            }
         },
-        'location.longitude': {
-            $gte: longitude - lngDelta,
-            $lte: longitude + lngDelta,
-        },
-        'location': { $exists: true },
+        // 'location': { $exists: true },
         'isVerified': true
     };
 
@@ -279,25 +284,34 @@ export const findNearbyBusinesses = async (
 
     const businesses = await BusinessModel.find(query).exec();
 
-    // Calculate actual distances and filter
-    const businessesWithDistance = businesses.map((doc) => {
+    let results: any[] = [];
+
+    businesses.forEach(doc => {
         const biz = toPublic(doc as IBusiness);
-        if (biz.location) {
-            const distance = calculateDistance(
-                latitude,
-                longitude,
-                biz.location.latitude,
-                biz.location.longitude
-            );
-            return { ...biz, distance };
+        
+        if (doc.locations && Array.isArray(doc.locations)) {
+            doc.locations.forEach(loc => {
+                const distance = calculateDistance(latitude, longitude, loc.latitude, loc.longitude);
+                
+                if (distance <= maxDistanceKm) {
+                    results.push({
+                        id: biz.id,
+                        branchId: loc._id,
+                        name: biz.name,
+                        branchName: loc.name,
+                        category: biz.category,
+                        logoUrl: biz.logoUrl,
+                        location: loc,
+                        distance: distance
+                    });
+                }
+            });
         }
-        return null;
-    }).filter((biz): biz is NonNullable<typeof biz> => biz !== null && biz.distance <= maxDistanceKm);
+    });
 
-    // Sort by distance
-    businessesWithDistance.sort((a, b) => a.distance - b.distance);
+    results.sort((a, b) => a.distance - b.distance);
 
-    return businessesWithDistance;
+    return results;
 };
 
 /**
@@ -348,15 +362,13 @@ export const findBusinessesInBounds = async (
     category?: string
 ) => {
     const query: any = {
-        'location.latitude': {
-            $gte: minLat,
-            $lte: maxLat,
+        'locations': {
+            $elemMatch: {
+                latitude: { $gte: minLat, $lte: maxLat },
+                longitude: { $gte: minLng, $lte: maxLng }
+            }
         },
-        'location.longitude': {
-            $gte: minLng,
-            $lte: maxLng,
-        },
-        'location': { $exists: true },
+        'isVerified': true,
         'status': 'active'
     };
 
@@ -366,7 +378,36 @@ export const findBusinessesInBounds = async (
 
     const businesses = await BusinessModel.find(query).exec();
 
-    return businesses.map((doc) => toPublic(doc as IBusiness));
+    let results: any[] = [];
+
+    businesses.forEach(doc => {
+        const biz = toPublic(doc as IBusiness);
+        
+        if (doc.locations && Array.isArray(doc.locations)) {
+            doc.locations.forEach((loc: any) => {
+                if (loc.latitude >= minLat && loc.latitude <= maxLat &&
+                    loc.longitude >= minLng && loc.longitude <= maxLng) {
+                    
+                    results.push({
+                        id: biz.id,
+                        branchId: loc._id,
+                        name: biz.name,
+                        branchName: loc.name,
+                        category: biz.category,
+                        logoUrl: biz.logoUrl,
+                        location: { 
+                            latitude: loc.latitude,
+                            longitude: loc.longitude,
+                            address: loc.address,
+                            formattedAddress: loc.formattedAddress
+                        }
+                    });
+                }
+            });
+        }
+    });
+
+    return results;
 };
 
 /**
@@ -382,40 +423,13 @@ export const getAllBusinesses = async (
     longitude?: number,
     limit: number = 100,
     category?: string
-) => {
-    const query: any = {
-        'location': { $exists: true },
-        'status': 'active'
-    };
-
-    if (category) {
-        query.category = category;
+) => {    
+    if (latitude === undefined || longitude === undefined) {
+        const query: any = { status: 'active' };
+        if (category) query.category = category;
+        const docs = await BusinessModel.find(query).limit(limit).exec();
+        return docs.map(doc => toPublic(doc as IBusiness));
     }
 
-    const businesses = await BusinessModel.find(query).limit(limit).exec();
-
-    const businessList = businesses.map((doc) => toPublic(doc as IBusiness));
-
-    // If user location is provided, calculate distances and sort
-    if (latitude !== undefined && longitude !== undefined) {
-        const businessesWithDistance = businessList.map((biz) => {
-            if (biz.location) {
-                const distance = calculateDistance(
-                    latitude,
-                    longitude,
-                    biz.location.latitude,
-                    biz.location.longitude
-                );
-                return { ...biz, distance };
-            }
-            return { ...biz, distance: Infinity };
-        });
-
-        // Sort by distance (closest first)
-        businessesWithDistance.sort((a, b) => a.distance - b.distance);
-        return businessesWithDistance;
-    }
-
-    // Return without distance calculation if no user location
-    return businessList;
+    return findNearbyBusinesses(latitude, longitude, 5000, category);
 };

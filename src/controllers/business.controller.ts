@@ -246,7 +246,7 @@ export const getBusinessById = async (req: Request, res: Response) => {
             email: business.email,
             status: business.status,
             address: business.address,
-            location: business.location,
+            locations: business.locations,
             createdAt: business.createdAt,
             logoUrl: business.logoUrl
         });
@@ -262,70 +262,58 @@ export const getBusinessById = async (req: Request, res: Response) => {
 export const updateLocation = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
-
-    const { address } = req.body as { address?: string };
-
-    if (!address) {
-        return res.status(400).json({ message: 'address is required in format: calle-numero-ciudad-estado-pais' });
-    }
+    
+    const { locationId } = req.params;
+    const { address, name, isMain } = req.body;
 
     try {
-        const updatedBusiness = await businessService.updateBusinessLocation(biz.id, address);
-        
-        return res.json({
-            message: 'Location updated successfully',
-            business: {
-                id: updatedBusiness.id,
-                name: updatedBusiness.name,
-                location: updatedBusiness.location,
-            },
-        });
+        const updatedBiz = await businessService.updateBranch(biz.id, locationId, { address, name, isMain });
+        return res.json(updatedBiz);
     } catch (error: any) {
-        if (error.message) {
-            return res.status(400).json({ message: error.message });
-        }
-        return res.status(500).json({ message: 'failed to update location' });
+        return res.status(500).json({ message: error.message || 'failed to update location' });
     }
-};
+}
+
+
 
 /**
  * Update business coordinates
  * Expects { latitude: number, longitude: number }
  * Used when user adjusts marker position in frontend map
  */
-export const updateCoordinates = async (req: Request, res: Response) => {
-    const biz = req.business;
-    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+// export const updateCoordinates = async (req: Request, res: Response) => {
+//     const biz = req.business;
+//     if (!biz) return res.status(401).json({ message: 'not authenticated' });
 
-    const { latitude, longitude } = req.body as { latitude?: number; longitude?: number };
+//     const { latitude, longitude } = req.body as { latitude?: number; longitude?: number };
 
-    if (latitude === undefined || longitude === undefined) {
-        return res.status(400).json({ message: 'latitude and longitude are required' });
-    }
+//     if (latitude === undefined || longitude === undefined) {
+//         return res.status(400).json({ message: 'latitude and longitude are required' });
+//     }
 
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        return res.status(400).json({ message: 'latitude and longitude must be numbers' });
-    }
+//     if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+//         return res.status(400).json({ message: 'latitude and longitude must be numbers' });
+//     }
 
-    try {
-        const updatedBusiness = await businessService.updateBusinessCoordinates(biz.id, latitude, longitude);
+//     try {
+//         const updatedBusiness = await businessService.updateBusinessCoordinates(biz.id, latitude, longitude);
         
-        return res.json({
-            message: 'Coordinates updated successfully',
-            business: {
-                id: updatedBusiness.id,
-                name: updatedBusiness.name,
-                address: updatedBusiness.address,
-                location: updatedBusiness.location,
-            },
-        });
-    } catch (error: any) {
-        if (error.message) {
-            return res.status(400).json({ message: error.message });
-        }
-        return res.status(500).json({ message: 'failed to update coordinates' });
-    }
-};
+//         return res.json({
+//             message: 'Coordinates updated successfully',
+//             business: {
+//                 id: updatedBusiness.id,
+//                 name: updatedBusiness.name,
+//                 address: updatedBusiness.address,
+//                 location: updatedBusiness.location,
+//             },
+//         });
+//     } catch (error: any) {
+//         if (error.message) {
+//             return res.status(400).json({ message: error.message });
+//         }
+//         return res.status(500).json({ message: 'failed to update coordinates' });
+//     }
+// };
 
 /**
  * Find nearby businesses
@@ -496,3 +484,33 @@ export const getBusinessesByCategory = async (req: Request, res: Response) => {
         return res.status(500).json({ message: 'failed to get businesses' });
     }
 };
+
+export const addLocation = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    const { address, name } = req.body;
+    if (!address) return res.status(400).json({ message: 'address is required' });
+
+    try {
+        const updatedBiz = await businessService.addBranch(biz.id, address, name);
+        return res.json(updatedBiz);
+    } catch (error: any) {
+        return res.status(500).json({ message: error.message || 'failed to add location' });
+    }
+};
+
+export const removeLocation = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+    
+    const { locationId } = req.params;
+
+    try {
+        const updatedBiz = await businessService.removeBranch(biz.id, locationId);
+        return res.json(updatedBiz);
+    } catch (error: any) {
+        return res.status(500).json({ message: 'failed to remove location' });
+    }
+};
+
