@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { RedemptionCodeModel } from '../models/redemptionCode.model';
+import { TransactionModel } from '../models/transaction.model';
 import * as systemService from '../services/system.service';
 import * as userPointsService from '../services/userPoints.service';
 import { calculatePoints } from '../services/userPoints.service';
+import { BusinessModel } from '../models/business.model';
 
 /**
  * Genera un código único alfanumérico (Ej: A7X-9YP)
@@ -113,6 +115,28 @@ export const claimCode = async (req: Request, res: Response, next: NextFunction)
             redemption.amount,
             undefined
         );
+
+       const pointsAdded = calculatePoints(redemption.amount, pointsSystem.pointsConversion!);
+
+       const business = await BusinessModel.findById(redemption.businessId);
+        const businessName = business ? business.name : 'Unknown Business';
+
+        await TransactionModel.create({
+            userId: userId,
+            businessId: redemption.businessId,
+            businessName: businessName,
+            type: 'add', 
+            purchaseAmount: redemption.amount,
+            items: [{ 
+                rewardSystemId: pointsSystem.id,
+                rewardSystemName: pointsSystem.name,
+                pointsChange: pointsAdded,
+                stampsChange: 0
+            }],
+            totalPointsChange: pointsAdded,
+            totalStampsChange: 0,
+            notes: `Pedido a domicilio (Código: ${redemption.code})`
+        });
 
         redemption.isRedeemed = true;
         redemption.redeemedBy = userId;
