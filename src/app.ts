@@ -11,6 +11,7 @@ import userPointsRoutes from './routes/userPoints.routes';
 import transactionRoutes from './routes/transaction.routes';
 import subscriptionRoutes from './routes/subscription.routes';
 import webhookRoutes from './routes/webhook.routes';
+import deliveryRoutes from './routes/delivery.routes';
 
 dotenv.config();
 
@@ -87,5 +88,6 @@ app.use('/rewards', rewardRoutes);
 app.use('/user-points', userPointsRoutes);
 app.use('/transactions', transactionRoutes);
 app.use('/subscription', subscriptionRoutes); 
+app.use('/delivery', deliveryRoutes);
 
 export default app;
