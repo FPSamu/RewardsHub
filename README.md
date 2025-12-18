@@ -85,6 +85,12 @@ Required variables:
 - `JWT_SECRET` - Secret for JWT tokens
 - `JWT_REFRESH_SECRET` - Secret for refresh tokens
 - `ALLOWED_ORIGINS` - Comma-separated list of allowed frontend URLs
+- `EMAIL_USER` - Email account for sending emails
+- `EMAIL_PASSWORD` - Email password or App Password (for Gmail)
+- `EMAIL_FROM` - Email address that appears as sender
+- `FRONTEND_URL` - Frontend URL for email verification links
+
+**📧 Email Setup (Gmail):** See [GMAIL_SETUP.md](./GMAIL_SETUP.md) for quick Gmail configuration.
 
 ---
 
@@ -150,6 +156,7 @@ See [POSTMAN_GUIDE.md](./POSTMAN_GUIDE.md) for detailed API documentation and te
 - [Deployment Guide](./DEPLOYMENT.md) - Deploy to Render.com
 - [CORS Setup Guide](./CORS_SETUP.md) - Configure CORS for frontend integration
 - [Postman Testing Guide](./POSTMAN_GUIDE.md) - API testing with Postman
+- [Nodemailer Setup Guide](./NODEMAILER_SETUP.md) - Email configuration with Nodemailer
 - [Environment Variables](./.env.example) - Required configuration
 
 ---

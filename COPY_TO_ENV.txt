@@ -1,0 +1,33 @@
+
+# ========================================
+# CONFIGURACIÓN DE EMAIL - GMAIL
+# ========================================
+# Copia estas líneas a tu archivo .env y reemplaza los valores
+
+# Servicio de email (ya configurado para Gmail)
+EMAIL_SERVICE=gmail
+
+# Tu email de Gmail
+EMAIL_USER=tu-email@gmail.com
+
+# App Password de Gmail (16 caracteres, sin espacios)
+# Obtén tu App Password aquí: https://myaccount.google.com/apppasswords
+EMAIL_PASSWORD=abcdefghijklmnop
+
+# Email que aparecerá como remitente (normalmente el mismo que EMAIL_USER)
+EMAIL_FROM=tu-email@gmail.com
+
+# URL de tu frontend (para links de verificación de email)
+FRONTEND_URL=http://localhost:5173
+
+# ========================================
+# INSTRUCCIONES:
+# ========================================
+# 1. Ve a: https://myaccount.google.com/apppasswords
+# 2. Genera una contraseña para "Correo" → "RewardsHub"
+# 3. Copia la contraseña de 16 caracteres (sin espacios)
+# 4. Reemplaza "abcdefghijklmnop" con tu App Password
+# 5. Reemplaza "tu-email@gmail.com" con tu email real
+# 6. Guarda el archivo .env
+# 7. Ejecuta: npm run verify-email
+# ========================================
