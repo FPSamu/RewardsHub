@@ -38,7 +38,7 @@ const initializeTransporter = (): Transporter => {
     }
 
     // Verificar la conexión al inicializar
-    transporter.verify((error, success) => {
+    transporter.verify((error: Error | null, success: boolean) => {
         if (error) {
             console.error('⚠️ Error al conectar con el servidor de email:', error);
         } else {
