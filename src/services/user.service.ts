@@ -32,7 +32,22 @@ const toPublic = (doc: IUser) => ({
  */
 export const createUser = async (username: string, email: string, password: string) => {
     const passHash = await bcrypt.hash(password, 10);
+
+    console.log('🔵 [CREATE USER] Creando usuario:', {
+        email: email.toLowerCase(),
+        timestamp: new Date().toISOString()
+    });
+
     const doc = await UserModel.create({ username, email: email.toLowerCase(), passHash });
+
+    console.log('🟢 [CREATE USER] Usuario creado:', {
+        email: doc.email,
+        id: doc._id,
+        isVerified: doc.isVerified,
+        verificationToken: doc.verificationToken,
+        timestamp: new Date().toISOString()
+    });
+
     return toPublic(doc as IUser);
 };
 
@@ -140,7 +155,24 @@ export const updateUserProfilePicture = async (userId: string, profilePictureUrl
 export const generateVerificationToken = async (userId: string): Promise<string> => {
     const crypto = await import('crypto');
     const token = crypto.randomBytes(32).toString('hex');
+
+    console.log('🔵 [GENERATE TOKEN] Generando token de verificación:', {
+        userId,
+        timestamp: new Date().toISOString()
+    });
+
     await UserModel.findByIdAndUpdate(userId, { verificationToken: token }).exec();
+
+    // Verificar que se guardó correctamente
+    const updatedUser = await UserModel.findById(userId).select('email isVerified verificationToken').exec();
+    console.log('🟢 [GENERATE TOKEN] Token guardado:', {
+        userId,
+        email: updatedUser?.email,
+        isVerified: updatedUser?.isVerified,
+        hasToken: !!updatedUser?.verificationToken,
+        timestamp: new Date().toISOString()
+    });
+
     return token;
 };
 
@@ -152,7 +184,7 @@ export const generateVerificationToken = async (userId: string): Promise<string>
 export const verifyUserEmail = async (token: string) => {
     const doc = await UserModel.findOne({ verificationToken: token }).exec();
     if (!doc) return undefined;
-    
+
     doc.isVerified = true;
     doc.verificationToken = undefined;
     await doc.save();
@@ -167,11 +199,11 @@ export const verifyUserEmail = async (token: string) => {
 export const generatePasswordResetToken = async (email: string): Promise<string | undefined> => {
     const doc = await UserModel.findOne({ email: email.toLowerCase() }).exec();
     if (!doc) return undefined;
-    
+
     const crypto = await import('crypto');
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 3600000); // 1 hour
-    
+
     doc.resetPasswordToken = token;
     doc.resetPasswordExpires = expires;
     await doc.save();
@@ -189,9 +221,9 @@ export const resetPassword = async (token: string, newPassword: string) => {
         resetPasswordToken: token,
         resetPasswordExpires: { $gt: new Date() },
     }).exec();
-    
+
     if (!doc) return undefined;
-    
+
     doc.passHash = await bcrypt.hash(newPassword, 10);
     doc.resetPasswordToken = undefined;
     doc.resetPasswordExpires = undefined;

@@ -25,35 +25,66 @@ export const register = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'username, email and password are required' });
     }
 
+    console.log('🔵 [REGISTER] Iniciando registro:', {
+        email,
+        timestamp: new Date().toISOString()
+    });
+
     const existing = await userService.findUserByEmail(email);
     if (existing) return res.status(409).json({ message: 'email already used' });
 
     const user = await userService.createUser(username, email, password);
-    
+
+    console.log('🟡 [REGISTER] Usuario creado, generando token:', {
+        userId: user.id,
+        email: user.email,
+        isVerified: user.isVerified,
+        timestamp: new Date().toISOString()
+    });
+
     // Send verification email
     const verificationToken = await userService.generateVerificationToken(user.id);
-    
+
+    console.log('🟡 [REGISTER] Token generado, enviando email:', {
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString()
+    });
+
     try {
         const emailService = await import('../services/email.service');
         await emailService.sendVerificationEmail(email, verificationToken, false);
+        console.log('🟢 [REGISTER] Email enviado exitosamente:', {
+            email,
+            timestamp: new Date().toISOString()
+        });
     } catch (error) {
-        console.error('Failed to send verification email:', error);
+        console.error('❌ [REGISTER] Failed to send verification email:', error);
     }
-    
+
     const accessToken = (jwt as any).sign({ sub: user.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     // store refresh token
     await userService.addRefreshToken(user.id, refreshToken);
-    return res.status(201).json({ 
-        user: { 
-            id: user.id, 
-            username: user.username, 
-            email: user.email, 
-            profilePicture: user.profilePicture, 
+
+    console.log('🟢 [REGISTER] Registro completado:', {
+        userId: user.id,
+        email: user.email,
+        isVerified: user.isVerified,
+        timestamp: new Date().toISOString()
+    });
+
+    return res.status(201).json({
+        user: {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            profilePicture: user.profilePicture,
             isVerified: user.isVerified,
-            createdAt: user.createdAt 
-        }, 
-        token: accessToken, refreshToken });
+            createdAt: user.createdAt
+        },
+        token: accessToken, refreshToken
+    });
 };
 
 /**
@@ -73,16 +104,16 @@ export const login = async (req: Request, res: Response) => {
     const accessToken = (jwt as any).sign({ sub: user.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await userService.addRefreshToken(user.id, refreshToken);
-    return res.json({ 
-        user: { 
-            id: user.id, 
-            username: user.username, 
-            email: user.email, 
-            profilePicture: user.profilePicture, 
+    return res.json({
+        user: {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            profilePicture: user.profilePicture,
             isVerified: user.isVerified,
-            createdAt: user.createdAt 
-        }, 
-        token: accessToken, refreshToken 
+            createdAt: user.createdAt
+        },
+        token: accessToken, refreshToken
     });
 };
 
@@ -101,8 +132,8 @@ export const refresh = async (req: Request, res: Response) => {
 
         // rotate: remove old, create new
         await userService.removeRefreshToken(userId, refreshToken);
-    const newAccess = (jwt as any).sign({ sub: userId }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
-    const newRefresh = (jwt as any).sign({ sub: userId }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
+        const newAccess = (jwt as any).sign({ sub: userId }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
+        const newRefresh = (jwt as any).sign({ sub: userId }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
         await userService.addRefreshToken(userId, newRefresh);
         return res.json({ token: newAccess, refreshToken: newRefresh });
     } catch (err) {
@@ -135,13 +166,13 @@ export const logout = async (req: Request, res: Response) => {
 export const me = (req: Request, res: Response) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'not authenticated' });
-    return res.json({ 
-        id: user.id, 
-        username: user.username, 
-        email: user.email, 
-        profilePicture: user.profilePicture, 
-        createdAt: user.createdAt, 
-        isVerified: user.isVerified 
+    return res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profilePicture,
+        createdAt: user.createdAt,
+        isVerified: user.isVerified
     });
 };
 
@@ -151,14 +182,14 @@ export const me = (req: Request, res: Response) => {
  */
 export const getUserById = async (req: Request, res: Response) => {
     const { id } = req.params;
-    
+
     if (!id) {
         return res.status(400).json({ message: 'user id is required' });
     }
 
     try {
         const user = await userService.findUserById(id);
-        
+
         if (!user) {
             return res.status(404).json({ message: 'user not found' });
         }
@@ -234,7 +265,7 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
     try {
         // Dynamic import to avoid circular dependency
         const uploadService = await import('../services/upload.service');
-        
+
         // Upload to S3
         const profilePictureUrl = await uploadService.uploadFile(req.file, 'profile-pictures');
 
@@ -277,7 +308,7 @@ export const resendVerification = async (req: Request, res: Response) => {
     if (user.isVerified) return res.status(400).json({ message: 'Already verified' });
 
     const token = await userService.generateVerificationToken(user.id);
-    
+
     try {
         const emailService = await import('../services/email.service');
         await emailService.sendVerificationEmail(user.email, token, false); // false = user account
