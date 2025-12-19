@@ -23,15 +23,32 @@ const toPublic = (doc: IBusiness) => ({
 export const createBusiness = async (name: string, email: string, password: string, category: string = 'food') => {
     const passHash = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const doc = await BusinessModel.create({ 
-        name, 
-        email: email.toLowerCase(), 
+
+    console.log('🔵 [CREATE BUSINESS] Creando negocio:', {
+        email: email.toLowerCase(),
+        category,
+        timestamp: new Date().toISOString()
+    });
+
+    const doc = await BusinessModel.create({
+        name,
+        email: email.toLowerCase(),
         passHash,
         verificationToken,
         isVerified: false,
         locations: [],
         category
     });
+
+    console.log('🟢 [CREATE BUSINESS] Negocio creado:', {
+        email: doc.email,
+        id: doc._id,
+        isVerified: doc.isVerified,
+        hasVerificationToken: !!doc.verificationToken,
+        category: doc.category,
+        timestamp: new Date().toISOString()
+    });
+
     // Return the full doc (or extended public object) so controller can access verificationToken
     return { ...toPublic(doc as IBusiness), verificationToken };
 };
@@ -39,19 +56,36 @@ export const createBusiness = async (name: string, email: string, password: stri
 export const generateVerificationToken = async (userId: string): Promise<string> => {
     const crypto = await import('crypto');
     const token = crypto.randomBytes(32).toString('hex');
+
+    console.log('🔵 [BUSINESS GENERATE TOKEN] Generando token de verificación:', {
+        businessId: userId,
+        timestamp: new Date().toISOString()
+    });
+
     await BusinessModel.findByIdAndUpdate(userId, { verificationToken: token }).exec();
+
+    // Verificar que se guardó correctamente
+    const updatedBusiness = await BusinessModel.findById(userId).select('email isVerified verificationToken').exec();
+    console.log('🟢 [BUSINESS GENERATE TOKEN] Token guardado:', {
+        businessId: userId,
+        email: updatedBusiness?.email,
+        isVerified: updatedBusiness?.isVerified,
+        hasToken: !!updatedBusiness?.verificationToken,
+        timestamp: new Date().toISOString()
+    });
+
     return token;
 };
 
 export const verifyBusinessEmail = async (token: string) => {
     const doc = await BusinessModel.findOne({ verificationToken: token }).exec();
-    
+
     if (!doc) return undefined;
-    
+
     doc.isVerified = true;
     doc.verificationToken = undefined;
     await doc.save();
-    
+
     return {
         id: doc.id,
         name: doc.name,
@@ -69,7 +103,7 @@ export const generatePasswordResetToken = async (email: string) => {
     doc.resetPasswordToken = resetToken;
     doc.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
     await doc.save();
-    
+
     return resetToken;
 };
 
@@ -117,11 +151,11 @@ export const hasRefreshToken = async (businessId: string, token: string): Promis
 };
 
 export const addBranch = async (
-    businessId: string, 
-    addressString: string, 
+    businessId: string,
+    addressString: string,
     branchName?: string,
-    lat?: number, 
-    lng?: number  
+    lat?: number,
+    lng?: number
 ) => {
     let latitude = lat;
     let longitude = lng;
@@ -166,7 +200,7 @@ export const removeBranch = async (businessId: string, locationId: string) => {
     } else {
         business.locations = [];
     }
-    
+
     // Si borramos la principal y quedan otras, asignamos una nueva principal
     if (business.locations.length > 0 && !business.locations.some(l => l.isMain)) {
         business.locations[0].isMain = true;
@@ -220,8 +254,8 @@ export const updateBusinessLogo = async (businessId: string, logoUrl: string) =>
 };
 
 export const updateBranch = async (
-    businessId: string, 
-    locationId: string, 
+    businessId: string,
+    locationId: string,
     updates: { address?: string; name?: string; isMain?: boolean; latitude?: number; longitude?: number }
 ) => {
     const business = await BusinessModel.findById(businessId);
@@ -236,7 +270,7 @@ export const updateBranch = async (
     if (updates.latitude !== undefined && updates.longitude !== undefined) {
         location.latitude = updates.latitude;
         location.longitude = updates.longitude;
-        if (updates.address) location.address = updates.address; 
+        if (updates.address) location.address = updates.address;
     } else if (updates.address && updates.address !== location.address) {
         const geo = await geocodingService.geocodeAddress(updates.address);
         location.address = updates.address;
@@ -291,12 +325,12 @@ export const findNearbyBusinesses = async (
     const query: any = {
         'locations': {
             $elemMatch: {
-                'latitude': { 
-                    $gte: latitude - latDelta, 
+                'latitude': {
+                    $gte: latitude - latDelta,
                     $lte: latitude + latDelta
                 },
                 'longitude': {
-                    $gte: longitude - lngDelta, 
+                    $gte: longitude - lngDelta,
                     $lte: longitude + lngDelta
                 }
             }
@@ -315,11 +349,11 @@ export const findNearbyBusinesses = async (
 
     businesses.forEach(doc => {
         const biz = toPublic(doc as IBusiness);
-        
+
         if (doc.locations && Array.isArray(doc.locations)) {
             doc.locations.forEach(loc => {
                 const distance = calculateDistance(latitude, longitude, loc.latitude, loc.longitude);
-                
+
                 if (distance <= maxDistanceKm) {
                     results.push({
                         id: biz.id,
@@ -364,7 +398,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
  */
 export const deleteBusiness = async (businessId: string): Promise<void> => {
     const business = await BusinessModel.findById(businessId).exec();
-    
+
     if (!business) {
         throw new Error('Business not found');
     }
@@ -409,12 +443,12 @@ export const findBusinessesInBounds = async (
 
     businesses.forEach(doc => {
         const biz = toPublic(doc as IBusiness);
-        
+
         if (doc.locations && Array.isArray(doc.locations)) {
             doc.locations.forEach((loc: any) => {
                 if (loc.latitude >= minLat && loc.latitude <= maxLat &&
                     loc.longitude >= minLng && loc.longitude <= maxLng) {
-                    
+
                     results.push({
                         id: biz.id,
                         branchId: loc._id,
@@ -422,7 +456,7 @@ export const findBusinessesInBounds = async (
                         branchName: loc.name,
                         category: biz.category,
                         logoUrl: biz.logoUrl,
-                        location: { 
+                        location: {
                             latitude: loc.latitude,
                             longitude: loc.longitude,
                             address: loc.address,
@@ -450,7 +484,7 @@ export const getAllBusinesses = async (
     longitude?: number,
     limit: number = 100,
     category?: string
-) => {    
+) => {
     if (latitude === undefined || longitude === undefined) {
         const query: any = { status: 'active' };
         if (category) query.category = category;

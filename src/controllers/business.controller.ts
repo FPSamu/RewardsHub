@@ -15,42 +15,68 @@ export const register = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'name, email and password are required' });
     }
 
+    console.log('🔵 [BUSINESS REGISTER] Iniciando registro:', {
+        email,
+        category: category || 'food',
+        timestamp: new Date().toISOString()
+    });
+
     const existing = await businessService.findBusinessByEmail(email);
     if (existing) return res.status(409).json({ message: 'email already used' });
 
     const biz = await businessService.createBusiness(name, email, password, category);
 
+    console.log('🟡 [BUSINESS REGISTER] Negocio creado, enviando email:', {
+        businessId: biz.id,
+        email: biz.email,
+        isVerified: biz.isVerified,
+        hasVerificationToken: !!biz.verificationToken,
+        timestamp: new Date().toISOString()
+    });
+
     const verificationToken = await businessService.generateVerificationToken(biz.id);
-    
+
     // Send verification email
     try {
-        await emailService.sendVerificationEmail(biz.email, verificationToken, true); 
+        await emailService.sendVerificationEmail(biz.email, verificationToken, true);
+        console.log('🟢 [BUSINESS REGISTER] Email enviado exitosamente:', {
+            email: biz.email,
+            timestamp: new Date().toISOString()
+        });
     } catch (error) {
-        console.error('Failed to send email', error);
+        console.error('❌ [BUSINESS REGISTER] Failed to send email:', error);
     }
 
     const accessToken = (jwt as any).sign({ sub: biz.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: biz.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await businessService.addRefreshToken(biz.id, refreshToken);
-    return res.status(201).json({ 
-        business: { 
-            id: biz.id, 
-            name: biz.name, 
-            email: biz.email, 
+
+    console.log('🟢 [BUSINESS REGISTER] Registro completado:', {
+        businessId: biz.id,
+        email: biz.email,
+        isVerified: biz.isVerified,
+        timestamp: new Date().toISOString()
+    });
+
+    return res.status(201).json({
+        business: {
+            id: biz.id,
+            name: biz.name,
+            email: biz.email,
             isVerified: biz.isVerified,
-            createdAt: biz.createdAt 
-        }, 
-        token: accessToken, refreshToken 
+            createdAt: biz.createdAt
+        },
+        token: accessToken, refreshToken
     });
 };
 
 export const verifyEmail = async (req: Request, res: Response) => {
     const { token } = req.query;
-    
+
     if (!token) return res.status(400).json({ message: 'Token required' });
 
     const business = await businessService.verifyBusinessEmail(token as string);
-    
+
     if (!business) return res.status(400).json({ message: 'Invalid or expired token' });
 
     return res.json({ message: 'Email verified successfully', user: business });
@@ -112,9 +138,9 @@ export const login = async (req: Request, res: Response) => {
     const accessToken = (jwt as any).sign({ sub: biz.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: biz.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await businessService.addRefreshToken(biz.id, refreshToken);
-    return res.json({ 
-        token: accessToken, 
-        refreshToken, 
+    return res.json({
+        token: accessToken,
+        refreshToken,
         user: {
             id: biz.id,
             name: biz.name,
@@ -160,10 +186,10 @@ export const logout = async (req: Request, res: Response) => {
 export const me = (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
-    return res.json({ 
-        id: biz.id, 
-        name: biz.name, 
-        email: biz.email, 
+    return res.json({
+        id: biz.id,
+        name: biz.name,
+        email: biz.email,
         status: biz.status,
         address: biz.address,
         locations: biz.locations,
@@ -227,14 +253,14 @@ export const uploadLogo = async (req: Request, res: Response) => {
 
 export const getBusinessById = async (req: Request, res: Response) => {
     const { id } = req.params;
-    
+
     if (!id) {
         return res.status(400).json({ message: 'business id is required' });
     }
 
     try {
         const business = await businessService.findBusinessById(id);
-        
+
         if (!business) {
             return res.status(404).json({ message: 'business not found' });
         }
@@ -262,14 +288,14 @@ export const getBusinessById = async (req: Request, res: Response) => {
 export const updateLocation = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
-    
+
     const { locationId } = req.params;
     const { address, name, isMain, latitude, longitude } = req.body;
 
     try {
         const updatedBiz = await businessService.updateBranch(
-            biz.id, 
-            locationId, 
+            biz.id,
+            locationId,
             { address, name, isMain, latitude, longitude }
         );
         return res.json(updatedBiz);
@@ -299,7 +325,7 @@ export const getNearbyBusinesses = async (req: Request, res: Response) => {
 
     try {
         const businesses = await businessService.findNearbyBusinesses(lat, lng, maxDist, category as string);
-        
+
         return res.json({
             center: { latitude: lat, longitude: lng },
             maxDistanceKm: maxDist,
@@ -336,8 +362,8 @@ export const getBusinessesInBounds = async (req: Request, res: Response) => {
     const { minLat, maxLat, minLng, maxLng, category } = req.query;
 
     if (!minLat || !maxLat || !minLng || !maxLng) {
-        return res.status(400).json({ 
-            message: 'minLat, maxLat, minLng, and maxLng are required' 
+        return res.status(400).json({
+            message: 'minLat, maxLat, minLng, and maxLng are required'
         });
     }
 
@@ -360,7 +386,7 @@ export const getBusinessesInBounds = async (req: Request, res: Response) => {
             bounds.maxLng,
             category as string
         );
-        
+
         return res.json({
             bounds,
             count: businesses.length,
@@ -401,7 +427,7 @@ export const getAllBusinesses = async (req: Request, res: Response) => {
 
     try {
         const businesses = await businessService.getAllBusinesses(lat, lng, maxLimit, category as string);
-        
+
         return res.json({
             userLocation: lat && lng ? { latitude: lat, longitude: lng } : null,
             count: businesses.length,
@@ -428,7 +454,7 @@ export const getCategories = (req: Request, res: Response) => {
  */
 export const getBusinessesByCategory = async (req: Request, res: Response) => {
     const { category } = req.params;
-    
+
     if (!category) {
         return res.status(400).json({ message: 'category is required' });
     }
@@ -436,7 +462,7 @@ export const getBusinessesByCategory = async (req: Request, res: Response) => {
     try {
         // Reuse the service method with no location (unless passed in query, but let's keep it simple for this route)
         const businesses = await businessService.getAllBusinesses(undefined, undefined, 100, category);
-        
+
         return res.json({
             category,
             count: businesses.length,
@@ -466,7 +492,7 @@ export const addLocation = async (req: Request, res: Response) => {
 export const removeLocation = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
-    
+
     const { locationId } = req.params;
 
     try {
