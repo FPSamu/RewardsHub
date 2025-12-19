@@ -18,6 +18,7 @@
     "verify-cors": "ts-node scripts/verify-cors.ts",
     "verify-email": "ts-node scripts/verify-email.ts",
     "gmail-help": "node scripts/gmail-help.js",
+    "diagnose-isverified": "ts-node scripts/diagnose-isverified.ts",
     "generate-secrets": "node scripts/generate-secrets.js"
   },
   "keywords": [],

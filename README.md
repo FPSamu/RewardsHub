@@ -157,6 +157,7 @@ See [POSTMAN_GUIDE.md](./POSTMAN_GUIDE.md) for detailed API documentation and te
 - [CORS Setup Guide](./CORS_SETUP.md) - Configure CORS for frontend integration
 - [Postman Testing Guide](./POSTMAN_GUIDE.md) - API testing with Postman
 - [Nodemailer Setup Guide](./NODEMAILER_SETUP.md) - Email configuration with Nodemailer
+- [Email Verification Guide](./EMAIL_VERIFICATION_SUMMARY.md) - Email verification system
 - [Environment Variables](./.env.example) - Required configuration
 
 ---

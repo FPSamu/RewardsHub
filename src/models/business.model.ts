@@ -13,7 +13,7 @@ export interface ILocation {
     latitude: number;
     longitude: number;
     formattedAddress?: string;
-    isMain?: boolean; 
+    isMain?: boolean;
 }
 
 export interface IBusiness extends Document {
@@ -52,7 +52,7 @@ const businessSchema = new Schema<IBusiness>(
         passHash: { type: String, required: true },
         status: { type: String, enum: ['active', 'inactive'], default: 'inactive' },
         // address: { type: String },
-        locations: { type: [locationSchema], default: [] },        
+        locations: { type: [locationSchema], default: [] },
         logoUrl: { type: String },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
@@ -60,10 +60,10 @@ const businessSchema = new Schema<IBusiness>(
         verificationToken: { type: String },
         resetPasswordToken: { type: String },
         resetPasswordExpires: { type: Date },
-        category: { 
-            type: String, 
-            enum: ['food', 'retail', 'services', 'entertainment', 'other'], 
-            default: 'food' 
+        category: {
+            type: String,
+            enum: ['food', 'retail', 'services', 'entertainment', 'other'],
+            default: 'food'
         },
     },
     { timestamps: false }
@@ -73,6 +73,37 @@ businessSchema.index({ 'locations.latitude': 1, 'locations.longitude': 1 });
 
 businessSchema.virtual('id').get(function (this: IBusiness) {
     return this._id.toString();
+});
+
+/**
+ * Middleware para detectar cambios en isVerified
+ * Esto nos ayudará a diagnosticar por qué isVerified cambia automáticamente
+ */
+businessSchema.pre('save', function (next) {
+    if (this.isModified('isVerified')) {
+        const wasVerified = this.get('isVerified', null, { getters: false });
+        console.log('⚠️  [BUSINESS MODEL] isVerified está siendo modificado:', {
+            email: this.email,
+            businessId: this._id,
+            from: wasVerified,
+            to: this.isVerified,
+            timestamp: new Date().toISOString(),
+            stack: new Error().stack?.split('\n').slice(0, 5).join('\n')
+        });
+    }
+    next();
+});
+
+businessSchema.pre('findOneAndUpdate', function (next) {
+    const update = this.getUpdate() as any;
+    if (update && update.$set && 'isVerified' in update.$set) {
+        console.log('⚠️  [BUSINESS MODEL] isVerified siendo actualizado via findOneAndUpdate:', {
+            newValue: update.$set.isVerified,
+            timestamp: new Date().toISOString(),
+            stack: new Error().stack?.split('\n').slice(0, 5).join('\n')
+        });
+    }
+    next();
 });
 
 businessSchema.set('toJSON', {

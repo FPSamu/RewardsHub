@@ -5,8 +5,8 @@ export interface IUser extends Document {
     _id: any;
     username: string;
     email: string;
-    passHash: string; 
-    profilePicture?: string; 
+    passHash: string;
+    profilePicture?: string;
     isVerified: boolean;
     createdAt: Date;
     refreshTokens?: string[];
@@ -36,6 +36,37 @@ const userSchema = new Schema<IUser>(
  */
 userSchema.virtual('id').get(function (this: IUser) {
     return this._id.toString();
+});
+
+/**
+ * Middleware para detectar cambios en isVerified
+ * Esto nos ayudará a diagnosticar por qué isVerified cambia automáticamente
+ */
+userSchema.pre('save', function (next) {
+    if (this.isModified('isVerified')) {
+        const wasVerified = this.get('isVerified', null, { getters: false });
+        console.log('⚠️  [USER MODEL] isVerified está siendo modificado:', {
+            email: this.email,
+            userId: this._id,
+            from: wasVerified,
+            to: this.isVerified,
+            timestamp: new Date().toISOString(),
+            stack: new Error().stack?.split('\n').slice(0, 5).join('\n')
+        });
+    }
+    next();
+});
+
+userSchema.pre('findOneAndUpdate', function (next) {
+    const update = this.getUpdate() as any;
+    if (update && update.$set && 'isVerified' in update.$set) {
+        console.log('⚠️  [USER MODEL] isVerified siendo actualizado via findOneAndUpdate:', {
+            newValue: update.$set.isVerified,
+            timestamp: new Date().toISOString(),
+            stack: new Error().stack?.split('\n').slice(0, 5).join('\n')
+        });
+    }
+    next();
 });
 
 /**
