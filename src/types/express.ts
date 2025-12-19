@@ -5,16 +5,17 @@ import { ILocation } from '../models/business.model';
  * Business DTO interface (matches the structure returned by business service)
  */
 export interface Business {
-    id: string;
-    name: string;
-    email: string;
-    passHash: string;
-    status: 'active' | 'inactive';
-    address?: string;
-    locations?: ILocation[];
-    createdAt: string;
-    logoUrl?: string;
-    category?: string;
+  id: string;
+  name: string;
+  email: string;
+  passHash: string;
+  status: 'active' | 'inactive';
+  address?: string;
+  locations?: ILocation[];
+  createdAt: string;
+  logoUrl?: string;
+  category?: string;
+  isVerified: boolean;
 }
 
 declare global {
@@ -26,4 +27,4 @@ declare global {
   }
 }
 
-export {};
+export { };

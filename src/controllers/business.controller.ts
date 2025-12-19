@@ -195,7 +195,8 @@ export const me = (req: Request, res: Response) => {
         locations: biz.locations,
         createdAt: biz.createdAt,
         logoUrl: biz.logoUrl,
-        category: biz.category
+        category: biz.category,
+        isVerified: biz.isVerified
     });
 };
 
