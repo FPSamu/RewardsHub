@@ -14,19 +14,17 @@ const toPublic = (doc: IBusiness) => ({
     logoUrl: doc.logoUrl,
     createdAt: doc.createdAt.toISOString(),
     isVerified: doc.isVerified,
-    category: doc.category,
     mainLocation: doc.locations && doc.locations.length > 0
         ? doc.locations.find(l => l.isMain) || doc.locations[0]
         : undefined,
 });
 
-export const createBusiness = async (name: string, email: string, password: string, category: string = 'food') => {
+export const createBusiness = async (name: string, email: string, password: string) => {
     const passHash = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
     console.log('🔵 [CREATE BUSINESS] Creando negocio:', {
         email: email.toLowerCase(),
-        category,
         timestamp: new Date().toISOString()
     });
 
@@ -36,8 +34,7 @@ export const createBusiness = async (name: string, email: string, password: stri
         passHash,
         verificationToken,
         isVerified: false,
-        locations: [],
-        category
+        locations: []
     });
 
     console.log('🟢 [CREATE BUSINESS] Negocio creado:', {
@@ -45,7 +42,6 @@ export const createBusiness = async (name: string, email: string, password: stri
         id: doc._id,
         isVerified: doc.isVerified,
         hasVerificationToken: !!doc.verificationToken,
-        category: doc.category,
         timestamp: new Date().toISOString()
     });
 
@@ -218,7 +214,7 @@ export const removeBranch = async (businessId: string, locationId: string) => {
  */
 export const updateBusiness = async (
     businessId: string,
-    updates: { name?: string; email?: string; status?: 'active' | 'inactive'; category?: string }
+    updates: { name?: string; email?: string; status?: 'active' | 'inactive' }
 ) => {
     const doc = await BusinessModel.findByIdAndUpdate(
         businessId,
@@ -308,14 +304,12 @@ export const updateBranch = async (
  * @param latitude - Center latitude
  * @param longitude - Center longitude
  * @param maxDistanceKm - Maximum distance in kilometers (default: 10km)
- * @param category - Optional category to filter by
  * @returns Array of nearby businesses
  */
 export const findNearbyBusinesses = async (
     latitude: number,
     longitude: number,
-    maxDistanceKm: number = 300,
-    category?: string
+    maxDistanceKm: number = 300
 ): Promise<any[]> => {
     // Simple distance calculation using lat/lng
     // 1 degree ≈ 111km, so we calculate a rough bounding box
@@ -339,10 +333,6 @@ export const findNearbyBusinesses = async (
         'isVerified': true
     };
 
-    if (category) {
-        query.category = category;
-    }
-
     const businesses = await BusinessModel.find(query).exec();
 
     let results: any[] = [];
@@ -360,7 +350,6 @@ export const findNearbyBusinesses = async (
                         branchId: loc._id,
                         name: biz.name,
                         branchName: loc.name,
-                        category: biz.category,
                         logoUrl: biz.logoUrl,
                         location: loc,
                         distance: distance

@@ -31,7 +31,6 @@ export interface IBusiness extends Document {
     verificationToken?: string;
     resetPasswordToken?: string;
     resetPasswordExpires?: Date;
-    category: 'food' | 'retail' | 'services' | 'entertainment' | 'other';
 }
 
 const locationSchema = new Schema<ILocation>(
@@ -60,11 +59,6 @@ const businessSchema = new Schema<IBusiness>(
         verificationToken: { type: String },
         resetPasswordToken: { type: String },
         resetPasswordExpires: { type: Date },
-        category: {
-            type: String,
-            enum: ['food', 'retail', 'services', 'entertainment', 'other'],
-            default: 'food'
-        },
     },
     { timestamps: false }
 );

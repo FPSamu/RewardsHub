@@ -36,10 +36,6 @@ router.get('/all', businessCtrl.getAllBusinesses);
 router.post('/locations', authenticateBusiness, businessCtrl.addLocation);
 router.delete('/locations/:locationId', authenticateBusiness, businessCtrl.removeLocation);
 
-// Category endpoints
-router.get('/categories', businessCtrl.getCategories);
-router.get('/category/:category', businessCtrl.getBusinessesByCategory);
-
 // Get business by ID (must be last to avoid route conflicts)
 router.get('/:id', businessCtrl.getBusinessById);
 
