@@ -10,21 +10,20 @@ const ACCESS_EXPIRES = process.env.ACCESS_EXPIRES || '15m';
 const REFRESH_EXPIRES = process.env.REFRESH_EXPIRES || '7d';
 
 export const register = async (req: Request, res: Response) => {
-    const { name, email, password, category } = req.body as { name: string; email: string; password: string; category?: string };
+    const { name, email, password } = req.body as { name: string; email: string; password: string };
     if (!name || !email || !password) {
         return res.status(400).json({ message: 'name, email and password are required' });
     }
 
     console.log('🔵 [BUSINESS REGISTER] Iniciando registro:', {
         email,
-        category: category || 'food',
         timestamp: new Date().toISOString()
     });
 
     const existing = await businessService.findBusinessByEmail(email);
     if (existing) return res.status(409).json({ message: 'email already used' });
 
-    const biz = await businessService.createBusiness(name, email, password, category);
+    const biz = await businessService.createBusiness(name, email, password);
 
     console.log('🟡 [BUSINESS REGISTER] Negocio creado, enviando email:', {
         businessId: biz.id,
@@ -208,10 +207,10 @@ export const updateBusiness = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
 
-    const { name, email, category } = req.body;
+    const { name, email } = req.body;
 
     try {
-        const updatedBusiness = await businessService.updateBusiness(biz.id, { name, email, category });
+        const updatedBusiness = await businessService.updateBusiness(biz.id, { name, email });
         return res.json(updatedBusiness);
     } catch (error: any) {
         if (error.code === 11000) {
@@ -307,10 +306,10 @@ export const updateLocation = async (req: Request, res: Response) => {
 
 /**
  * Find nearby businesses
- * Query params: latitude, longitude, maxDistanceKm (optional, default 10), category (optional)
+ * Query params: latitude, longitude, maxDistanceKm (optional, default 10) (optional)
  */
 export const getNearbyBusinesses = async (req: Request, res: Response) => {
-    const { latitude, longitude, maxDistanceKm, category } = req.query;
+    const { latitude, longitude, maxDistanceKm } = req.query;
 
     if (!latitude || !longitude) {
         return res.status(400).json({ message: 'latitude and longitude are required' });
@@ -325,7 +324,7 @@ export const getNearbyBusinesses = async (req: Request, res: Response) => {
     }
 
     try {
-        const businesses = await businessService.findNearbyBusinesses(lat, lng, maxDist, category as string);
+        const businesses = await businessService.findNearbyBusinesses(lat, lng, maxDist);
 
         return res.json({
             center: { latitude: lat, longitude: lng },
@@ -360,7 +359,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
  * GET /api/business/in-bounds?minLat=X&maxLat=Y&minLng=A&maxLng=B&category=food
  */
 export const getBusinessesInBounds = async (req: Request, res: Response) => {
-    const { minLat, maxLat, minLng, maxLng, category } = req.query;
+    const { minLat, maxLat, minLng, maxLng } = req.query;
 
     if (!minLat || !maxLat || !minLng || !maxLng) {
         return res.status(400).json({
@@ -385,7 +384,7 @@ export const getBusinessesInBounds = async (req: Request, res: Response) => {
             bounds.maxLat,
             bounds.minLng,
             bounds.maxLng,
-            category as string
+
         );
 
         return res.json({
@@ -404,7 +403,7 @@ export const getBusinessesInBounds = async (req: Request, res: Response) => {
  * GET /api/business/all?latitude=X&longitude=Y&limit=100&category=food
  */
 export const getAllBusinesses = async (req: Request, res: Response) => {
-    const { latitude, longitude, limit, category } = req.query;
+    const { latitude, longitude, limit } = req.query;
 
     let lat: number | undefined;
     let lng: number | undefined;
@@ -427,7 +426,7 @@ export const getAllBusinesses = async (req: Request, res: Response) => {
     }
 
     try {
-        const businesses = await businessService.getAllBusinesses(lat, lng, maxLimit, category as string);
+        const businesses = await businessService.getAllBusinesses(lat, lng, maxLimit);
 
         return res.json({
             userLocation: lat && lng ? { latitude: lat, longitude: lng } : null,
@@ -462,10 +461,10 @@ export const getBusinessesByCategory = async (req: Request, res: Response) => {
 
     try {
         // Reuse the service method with no location (unless passed in query, but let's keep it simple for this route)
-        const businesses = await businessService.getAllBusinesses(undefined, undefined, 100, category);
+        const businesses = await businessService.getAllBusinesses(undefined, undefined, 100);
 
         return res.json({
-            category,
+
             count: businesses.length,
             businesses,
         });

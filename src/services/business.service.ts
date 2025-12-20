@@ -401,15 +401,13 @@ export const deleteBusiness = async (businessId: string): Promise<void> => {
  * @param maxLat - Maximum latitude
  * @param minLng - Minimum longitude
  * @param maxLng - Maximum longitude
- * @param category - Optional category filter
  * @returns Array of businesses within the bounds
  */
 export const findBusinessesInBounds = async (
     minLat: number,
     maxLat: number,
     minLng: number,
-    maxLng: number,
-    category?: string
+    maxLng: number
 ) => {
     const query: any = {
         'locations': {
@@ -421,10 +419,6 @@ export const findBusinessesInBounds = async (
         'isVerified': true,
         'status': 'active'
     };
-
-    if (category) {
-        query.category = category;
-    }
 
     const businesses = await BusinessModel.find(query).exec();
 
@@ -443,7 +437,6 @@ export const findBusinessesInBounds = async (
                         branchId: loc._id,
                         name: biz.name,
                         branchName: loc.name,
-                        category: biz.category,
                         logoUrl: biz.logoUrl,
                         location: {
                             latitude: loc.latitude,
@@ -465,21 +458,18 @@ export const findBusinessesInBounds = async (
  * @param latitude - User's latitude (optional)
  * @param longitude - User's longitude (optional)
  * @param limit - Maximum number of results (default: 100)
- * @param category - Optional category filter
  * @returns Array of all businesses, ordered by distance if coordinates provided
  */
 export const getAllBusinesses = async (
     latitude?: number,
     longitude?: number,
-    limit: number = 100,
-    category?: string
+    limit: number = 100
 ) => {
     if (latitude === undefined || longitude === undefined) {
         const query: any = { status: 'active' };
-        if (category) query.category = category;
         const docs = await BusinessModel.find(query).limit(limit).exec();
         return docs.map(doc => toPublic(doc as IBusiness));
     }
 
-    return findNearbyBusinesses(latitude, longitude, 5000, category);
+    return findNearbyBusinesses(latitude, longitude, 5000);
 };

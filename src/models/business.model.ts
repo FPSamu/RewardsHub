@@ -58,7 +58,7 @@ const businessSchema = new Schema<IBusiness>(
         isVerified: { type: Boolean, default: false },
         verificationToken: { type: String },
         resetPasswordToken: { type: String },
-        resetPasswordExpires: { type: Date },
+        resetPasswordExpires: { type: Date }
     },
     { timestamps: false }
 );
