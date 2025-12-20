@@ -2,7 +2,7 @@ import Stripe from 'stripe';
 import { PlanType } from '../models/subscription.model';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2025-11-17.clover'
+    apiVersion: '2025-12-15.clover'
 });
 
 // Plan price IDs from Stripe Dashboard
