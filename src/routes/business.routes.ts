@@ -2,6 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as businessCtrl from '../controllers/business.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
+import workShiftRoutes from './workShift.routes';
+import reportRoutes from './report.routes';
 
 const router = Router();
 const upload = multer({
@@ -35,6 +37,9 @@ router.get('/in-bounds', businessCtrl.getBusinessesInBounds);
 router.get('/all', businessCtrl.getAllBusinesses);
 router.post('/locations', authenticateBusiness, businessCtrl.addLocation);
 router.delete('/locations/:locationId', authenticateBusiness, businessCtrl.removeLocation);
+
+router.use('/work-shifts', workShiftRoutes);
+router.use('/reports', reportRoutes);
 
 // Get business by ID (must be last to avoid route conflicts)
 router.get('/:id', businessCtrl.getBusinessById);

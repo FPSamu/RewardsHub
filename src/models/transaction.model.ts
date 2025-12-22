@@ -30,20 +30,24 @@ export interface ITransaction extends Document {
     businessId: Types.ObjectId; // Reference to the business
     businessName: string; // Store business name for historical purposes
     type: TransactionType; // Type of transaction
-    
+
     // Transaction details
     purchaseAmount?: number; // Original purchase amount (for 'add' type)
     items: ITransactionItem[]; // Points/stamps changes per reward system
-    
+
     // Totals for this transaction
     totalPointsChange: number; // Total points in this transaction (can be negative)
     totalStampsChange: number; // Total stamps in this transaction (can be negative)
-    
+
     // Optional metadata
     rewardId?: Types.ObjectId; // Reference to reward if this was a redemption
     rewardName?: string; // Reward name for historical purposes
     notes?: string; // Optional notes about the transaction
-    
+
+    // Work shift tracking (for reports)
+    workShiftId?: Types.ObjectId; // Reference to the work shift
+    workShiftName?: string; // Shift name for historical purposes
+
     createdAt: Date;
     updatedAt: Date;
 }
@@ -63,11 +67,11 @@ const transactionSchema = new Schema<ITransaction>(
         userId: { type: Schema.Types.ObjectId, required: true, ref: 'User', index: true },
         businessId: { type: Schema.Types.ObjectId, required: true, ref: 'Business', index: true },
         businessName: { type: String, required: true },
-        type: { 
-            type: String, 
-            required: true, 
+        type: {
+            type: String,
+            required: true,
             enum: ['add', 'subtract', 'redeem'],
-            index: true 
+            index: true
         },
         purchaseAmount: { type: Number, min: 0 },
         items: { type: [transactionItemSchema], required: true, default: [] },
@@ -76,6 +80,8 @@ const transactionSchema = new Schema<ITransaction>(
         rewardId: { type: Schema.Types.ObjectId, ref: 'Reward' },
         rewardName: { type: String },
         notes: { type: String },
+        workShiftId: { type: Schema.Types.ObjectId, ref: 'WorkShift' },
+        workShiftName: { type: String },
     },
     { timestamps: true }
 );
@@ -93,6 +99,8 @@ transactionSchema.virtual('id').get(function (this: ITransaction) {
 transactionSchema.index({ userId: 1, businessId: 1 });
 transactionSchema.index({ userId: 1, createdAt: -1 });
 transactionSchema.index({ businessId: 1, createdAt: -1 });
+transactionSchema.index({ businessId: 1, workShiftId: 1, createdAt: -1 }); // For shift reports
+
 
 /**
  * toJSON transform

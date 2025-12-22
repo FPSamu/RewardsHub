@@ -5,6 +5,8 @@
  */
 import { TransactionModel, ITransaction, TransactionType, ITransactionItem } from '../models/transaction.model';
 import { Types } from 'mongoose';
+import * as workShiftService from './workShift.service';
+import { findShiftForTransaction } from '../helpers/shiftCalculator';
 
 /**
  * Public transaction object interface
@@ -22,6 +24,8 @@ export interface PublicTransaction {
     rewardId?: string;
     rewardName?: string;
     notes?: string;
+    workShiftId?: string;
+    workShiftName?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -54,6 +58,8 @@ const toPublic = (doc: ITransaction): PublicTransaction => ({
     rewardId: doc.rewardId?.toString(),
     rewardName: doc.rewardName,
     notes: doc.notes,
+    workShiftId: doc.workShiftId?.toString(),
+    workShiftName: doc.workShiftName,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
 });
@@ -88,6 +94,34 @@ export const createTransaction = async (
         stampsChange: item.stampsChange,
     }));
 
+    // Calculate work shift based on current time
+    const now = new Date();
+    let workShiftId: Types.ObjectId | undefined;
+    let workShiftName: string | undefined;
+
+    try {
+        // Get active work shifts for this business
+        const activeShifts = await workShiftService.getActiveWorkShifts(businessId);
+
+        if (activeShifts.length > 0) {
+            // Find which shift the current time belongs to
+            const matchingShift = findShiftForTransaction(now, activeShifts);
+
+            if (matchingShift) {
+                workShiftId = matchingShift._id;
+                workShiftName = matchingShift.name;
+                console.log(`[createTransaction] Assigned to shift: ${workShiftName} (${matchingShift.startTime} - ${matchingShift.endTime})`);
+            } else {
+                console.log(`[createTransaction] No matching shift found for time: ${now.toISOString()}`);
+            }
+        } else {
+            console.log(`[createTransaction] No active shifts configured for business: ${businessId}`);
+        }
+    } catch (err) {
+        // If shift calculation fails, log error but continue creating transaction
+        console.error('[createTransaction] Error calculating work shift:', err);
+    }
+
     const doc = await TransactionModel.create({
         userId: new Types.ObjectId(userId),
         businessId: new Types.ObjectId(businessId),
@@ -100,6 +134,8 @@ export const createTransaction = async (
         rewardId: rewardId ? new Types.ObjectId(rewardId) : undefined,
         rewardName,
         notes,
+        workShiftId,
+        workShiftName,
     });
 
     return toPublic(doc as ITransaction);
@@ -122,7 +158,7 @@ export const getTransactionsByUserId = async (
         .limit(limit)
         .skip(offset)
         .exec();
-    
+
     return docs.map((doc) => toPublic(doc as ITransaction));
 };
 
@@ -143,7 +179,7 @@ export const getTransactionsByBusinessId = async (
         .limit(limit)
         .skip(offset)
         .exec();
-    
+
     return docs.map((doc) => toPublic(doc as ITransaction));
 };
 
@@ -169,7 +205,7 @@ export const getTransactionsByUserAndBusiness = async (
         .limit(limit)
         .skip(offset)
         .exec();
-    
+
     return docs.map((doc) => toPublic(doc as ITransaction));
 };
 
@@ -196,7 +232,7 @@ export const getUserTransactionStats = async (userId: string): Promise<{
     totalStampsSpent: number;
 }> => {
     const userIdObj = new Types.ObjectId(userId);
-    
+
     const stats = await TransactionModel.aggregate([
         { $match: { userId: userIdObj } },
         {
