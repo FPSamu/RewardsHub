@@ -11,6 +11,18 @@ import axios from 'axios';
 // Import PDFKit using require (works better with TypeScript)
 const PDFDocument = require('pdfkit');
 
+// Color palette for professional design
+const COLORS = {
+    primary: '#1E40AF',      // Deep blue
+    secondary: '#3B82F6',    // Lighter blue
+    accent: '#10B981',       // Green for positive metrics
+    text: '#1F2937',         // Dark gray for text
+    textLight: '#6B7280',    // Light gray for secondary text
+    border: '#E5E7EB',       // Light border
+    background: '#F9FAFB',   // Very light gray background
+    white: '#FFFFFF',
+};
+
 /**
  * Generate a PDF report from report data
  * 
@@ -26,13 +38,12 @@ export async function generateReportPDF(reportData: ReportData): Promise<Buffer>
                 try {
                     const response = await axios.get(reportData.metadata.logoUrl, {
                         responseType: 'arraybuffer',
-                        timeout: 5000, // 5 second timeout
+                        timeout: 5000,
                     });
                     logoBuffer = Buffer.from(response.data as ArrayBuffer);
                     console.log('[generateReportPDF] Logo downloaded successfully');
                 } catch (err) {
                     console.error('[generateReportPDF] Error downloading logo:', err);
-                    // Continue without logo
                 }
             }
 
@@ -41,10 +52,11 @@ export async function generateReportPDF(reportData: ReportData): Promise<Buffer>
                 size: 'LETTER',
                 margins: {
                     top: 50,
-                    bottom: 50,
+                    bottom: 60,
                     left: 50,
                     right: 50,
                 },
+                bufferPages: true, // Enable page buffering for footer
             });
 
             // Collect PDF data in chunks
@@ -74,357 +86,472 @@ function generatePDFContent(
 ): void {
     const { metadata, summary, dailyData, periodSummary } = reportData;
 
-    // Header
+    // Header with logo and title
     addHeader(doc, metadata, logoBuffer);
 
-    // Summary section
-    addSummarySection(doc, summary, metadata.reportPeriod);
+    // Executive summary box
+    addExecutiveSummary(doc, summary, metadata.reportPeriod);
 
-    // Period summary (totals by shift and system)
-    addPeriodSummary(doc, periodSummary);
+    // Period summary tables
+    addPeriodSummaryTables(doc, periodSummary);
 
-    // Daily data (detailed breakdown)
-    addDailyData(doc, dailyData);
+    // Daily breakdown
+    if (dailyData.length > 0) {
+        addDailyBreakdown(doc, dailyData);
+    }
 
-    // Footer
+    // Footer on all pages
     addFooter(doc, metadata.generatedAt);
 }
 
 /**
- * Add header with business name and report title
+ * Add professional header with logo
  */
 function addHeader(
     doc: PDFKit.PDFDocument,
     metadata: ReportData['metadata'],
     logoBuffer: Buffer | null
 ): void {
+    const pageWidth = doc.page.width;
+    const startY = doc.y;
+
+    // Background header bar
+    doc.rect(0, 0, pageWidth, 140)
+        .fill(COLORS.primary);
+
+    doc.y = startY + 20;
+
     // Add logo if available
     if (logoBuffer) {
         try {
-            const logoWidth = 80;
-            const logoHeight = 80;
-            const logoX = (doc.page.width - logoWidth) / 2; // Center horizontally
+            const logoSize = 60;
+            const logoX = 50;
 
             doc.image(logoBuffer, logoX, doc.y, {
-                fit: [logoWidth, logoHeight],
-                align: 'center',
+                fit: [logoSize, logoSize],
             });
-
-            doc.moveDown(5); // Space after logo
         } catch (err) {
-            console.error('[addHeader] Error adding logo to PDF:', err);
-            // Continue without logo
+            console.error('[addHeader] Error adding logo:', err);
         }
     }
 
-    // Business name
-    doc.fontSize(20)
+    // Business name and title (white text on blue background)
+    const textX = logoBuffer ? 130 : 50;
+    doc.fillColor(COLORS.white)
+        .fontSize(22)
         .font('Helvetica-Bold')
-        .text(metadata.businessName, { align: 'center' });
+        .text(metadata.businessName, textX, startY + 25, { width: 400 });
 
-    doc.moveDown(0.5);
-
-    // Report title
-    doc.fontSize(16)
+    doc.fontSize(14)
         .font('Helvetica')
-        .text('Reporte de Transacciones por Turnos', { align: 'center' });
+        .fillColor('#E0E7FF')
+        .text('Reporte de Auditoría de Transacciones', textX, doc.y + 5);
 
-    doc.moveDown(0.3);
-
-    // Date range
+    // Date range in a box
     const startDate = formatDate(metadata.reportPeriod.startDate);
     const endDate = formatDate(metadata.reportPeriod.endDate);
-    doc.fontSize(12)
-        .font('Helvetica')
-        .fillColor('#666666')
-        .text(`Período: ${startDate} - ${endDate}`, { align: 'center' });
 
-    doc.fillColor('#000000');
-    doc.moveDown(1.5);
+    doc.fontSize(11)
+        .fillColor(COLORS.white)
+        .text(`Período: ${startDate} - ${endDate}`, textX, doc.y + 8);
 
-    // Horizontal line
-    doc.strokeColor('#CCCCCC')
-        .lineWidth(1)
-        .moveTo(50, doc.y)
-        .lineTo(562, doc.y)
-        .stroke();
-
-    doc.moveDown(1);
+    // Reset position after header
+    doc.y = 160;
+    doc.fillColor(COLORS.text);
 }
 
 /**
- * Add summary section with key metrics
+ * Add executive summary in a highlighted box
  */
-function addSummarySection(
+function addExecutiveSummary(
     doc: PDFKit.PDFDocument,
     summary: ReportData['summary'],
     period: { startDate: Date; endDate: Date }
 ): void {
+    const boxX = 50;
+    const boxY = doc.y;
+    const boxWidth = doc.page.width - 100;
+    const boxHeight = 120;
+
+    // Background box with subtle shadow effect
+    doc.rect(boxX + 2, boxY + 2, boxWidth, boxHeight)
+        .fill('#00000010');
+
+    doc.rect(boxX, boxY, boxWidth, boxHeight)
+        .fill(COLORS.background)
+        .stroke(COLORS.border);
+
+    doc.y = boxY + 15;
+
+    // Title
     doc.fontSize(14)
         .font('Helvetica-Bold')
-        .text('Resumen General', { underline: true });
+        .fillColor(COLORS.primary)
+        .text('RESUMEN EJECUTIVO', boxX + 20, doc.y);
 
-    doc.moveDown(0.5);
+    doc.moveDown(0.8);
 
-    const summaryData = [
-        { label: 'Total de Transacciones:', value: summary.totalTransactions.toString() },
-        { label: 'Total de Puntos Otorgados:', value: summary.totalPoints.toString() },
-        { label: 'Total de Sellos Otorgados:', value: summary.totalStamps.toString() },
-        { label: 'Días con Actividad:', value: summary.totalDays.toString() },
+    // Metrics in a grid layout
+    const metrics = [
+        { label: 'Total de Transacciones', value: summary.totalTransactions.toLocaleString() },
+        { label: 'Puntos Otorgados', value: summary.totalPoints.toLocaleString() },
+        { label: 'Sellos Otorgados', value: summary.totalStamps.toLocaleString() },
+        { label: 'Días con Actividad', value: summary.totalDays.toString() },
     ];
 
-    doc.fontSize(11).font('Helvetica');
+    const metricsY = doc.y;
+    const colWidth = (boxWidth - 40) / 2;
 
-    for (const item of summaryData) {
-        doc.text(item.label, 50, doc.y, { continued: true, width: 200 })
+    metrics.forEach((metric, index) => {
+        const col = index % 2;
+        const row = Math.floor(index / 2);
+        const x = boxX + 20 + (col * colWidth);
+        const y = metricsY + (row * 35);
+
+        doc.fontSize(9)
+            .font('Helvetica')
+            .fillColor(COLORS.textLight)
+            .text(metric.label, x, y);
+
+        doc.fontSize(18)
             .font('Helvetica-Bold')
-            .text(item.value, { align: 'right' });
-        doc.font('Helvetica');
-        doc.moveDown(0.3);
-    }
+            .fillColor(COLORS.primary)
+            .text(metric.value, x, y + 12);
+    });
 
-    doc.moveDown(1);
+    doc.y = boxY + boxHeight + 25;
+    doc.fillColor(COLORS.text);
 }
 
 /**
- * Add period summary (totals by shift and system)
+ * Add period summary tables with professional styling
  */
-function addPeriodSummary(doc: PDFKit.PDFDocument, periodSummary: ReportData['periodSummary']): void {
+function addPeriodSummaryTables(
+    doc: PDFKit.PDFDocument,
+    periodSummary: ReportData['periodSummary']
+): void {
     // Check if we need a new page
-    if (doc.y > 650) {
+    if (doc.y > 600) {
         doc.addPage();
     }
 
-    doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .text('Resumen por Turno', { underline: true });
+    // Section title
+    addSectionTitle(doc, 'ANÁLISIS POR TURNO DE TRABAJO');
 
-    doc.moveDown(0.5);
+    // Table
+    drawProfessionalTable(doc, {
+        headers: ['Turno', 'Transacciones', 'Puntos', 'Sellos'],
+        rows: periodSummary.totalsByShift.map(shift => [
+            shift.shiftName,
+            shift.transactions.toLocaleString(),
+            shift.points.toLocaleString(),
+            shift.stamps.toLocaleString(),
+        ]),
+        columnWidths: [200, 120, 120, 120],
+    });
 
-    // Table header
-    const tableTop = doc.y;
-    const colWidths = { shift: 150, transactions: 100, points: 100, stamps: 100 };
-    const startX = 50;
-
-    doc.fontSize(10).font('Helvetica-Bold');
-    doc.text('Turno', startX, tableTop, { width: colWidths.shift });
-    doc.text('Transacciones', startX + colWidths.shift, tableTop, { width: colWidths.transactions, align: 'center' });
-    doc.text('Puntos', startX + colWidths.shift + colWidths.transactions, tableTop, { width: colWidths.points, align: 'center' });
-    doc.text('Sellos', startX + colWidths.shift + colWidths.transactions + colWidths.points, tableTop, { width: colWidths.stamps, align: 'center' });
-
-    doc.moveDown(0.5);
-
-    // Draw line under header
-    doc.strokeColor('#CCCCCC')
-        .lineWidth(0.5)
-        .moveTo(startX, doc.y)
-        .lineTo(startX + colWidths.shift + colWidths.transactions + colWidths.points + colWidths.stamps, doc.y)
-        .stroke();
-
-    doc.moveDown(0.3);
-
-    // Table rows
-    doc.font('Helvetica').fontSize(10);
-
-    for (const shift of periodSummary.totalsByShift) {
-        const rowY = doc.y;
-
-        doc.text(shift.shiftName, startX, rowY, { width: colWidths.shift });
-        doc.text(shift.transactions.toString(), startX + colWidths.shift, rowY, { width: colWidths.transactions, align: 'center' });
-        doc.text(shift.points.toString(), startX + colWidths.shift + colWidths.transactions, rowY, { width: colWidths.points, align: 'center' });
-        doc.text(shift.stamps.toString(), startX + colWidths.shift + colWidths.transactions + colWidths.points, rowY, { width: colWidths.stamps, align: 'center' });
-
-        doc.moveDown(0.5);
-    }
-
-    doc.moveDown(1);
+    doc.moveDown(2);
 
     // Systems summary
-    if (doc.y > 650) {
+    if (doc.y > 600) {
         doc.addPage();
     }
 
-    doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .text('Resumen por Sistema de Recompensas', { underline: true });
+    addSectionTitle(doc, 'ANÁLISIS POR SISTEMA DE RECOMPENSAS');
 
-    doc.moveDown(0.5);
+    drawProfessionalTable(doc, {
+        headers: ['Sistema', 'Transacciones', 'Puntos', 'Sellos'],
+        rows: periodSummary.totalsBySystem.map(system => [
+            system.systemName,
+            system.transactions.toLocaleString(),
+            system.points.toLocaleString(),
+            system.stamps.toLocaleString(),
+        ]),
+        columnWidths: [200, 120, 120, 120],
+    });
 
-    // Table header
-    const systemTableTop = doc.y;
-    doc.fontSize(10).font('Helvetica-Bold');
-    doc.text('Sistema', startX, systemTableTop, { width: colWidths.shift });
-    doc.text('Transacciones', startX + colWidths.shift, systemTableTop, { width: colWidths.transactions, align: 'center' });
-    doc.text('Puntos', startX + colWidths.shift + colWidths.transactions, systemTableTop, { width: colWidths.points, align: 'center' });
-    doc.text('Sellos', startX + colWidths.shift + colWidths.transactions + colWidths.points, systemTableTop, { width: colWidths.stamps, align: 'center' });
-
-    doc.moveDown(0.5);
-
-    // Draw line
-    doc.strokeColor('#CCCCCC')
-        .lineWidth(0.5)
-        .moveTo(startX, doc.y)
-        .lineTo(startX + colWidths.shift + colWidths.transactions + colWidths.points + colWidths.stamps, doc.y)
-        .stroke();
-
-    doc.moveDown(0.3);
-
-    // Table rows
-    doc.font('Helvetica').fontSize(10);
-
-    for (const system of periodSummary.totalsBySystem) {
-        const rowY = doc.y;
-
-        doc.text(system.systemName, startX, rowY, { width: colWidths.shift });
-        doc.text(system.transactions.toString(), startX + colWidths.shift, rowY, { width: colWidths.transactions, align: 'center' });
-        doc.text(system.points.toString(), startX + colWidths.shift + colWidths.transactions, rowY, { width: colWidths.points, align: 'center' });
-        doc.text(system.stamps.toString(), startX + colWidths.shift + colWidths.transactions + colWidths.points, rowY, { width: colWidths.stamps, align: 'center' });
-
-        doc.moveDown(0.5);
-    }
-
-    doc.moveDown(1.5);
+    doc.moveDown(2);
 }
 
 /**
- * Add daily data with breakdown by shift
+ * Add daily breakdown section
  */
-function addDailyData(doc: PDFKit.PDFDocument, dailyData: DailyReport[]): void {
+function addDailyBreakdown(doc: PDFKit.PDFDocument, dailyData: DailyReport[]): void {
     // New page for daily details
     doc.addPage();
 
-    doc.fontSize(16)
-        .font('Helvetica-Bold')
-        .text('Detalle por Día y Turno', { underline: true });
-
+    addSectionTitle(doc, 'DETALLE DIARIO DE TRANSACCIONES');
     doc.moveDown(1);
 
     for (const day of dailyData) {
         // Check if we need a new page
-        if (doc.y > 700) {
+        if (doc.y > 680) {
             doc.addPage();
         }
 
-        // Day header
-        doc.fontSize(13)
+        // Day header with background
+        const dayHeaderY = doc.y;
+        const dayHeaderHeight = 35;
+
+        doc.rect(50, dayHeaderY, doc.page.width - 100, dayHeaderHeight)
+            .fill(COLORS.secondary)
+            .stroke(COLORS.border);
+
+        doc.fontSize(12)
             .font('Helvetica-Bold')
-            .fillColor('#2563EB')
-            .text(`${formatDate(day.date)} - ${capitalizeFirst(day.dayOfWeek)}`);
+            .fillColor(COLORS.white)
+            .text(
+                `${formatDate(day.date)} - ${capitalizeFirst(day.dayOfWeek)}`,
+                60,
+                dayHeaderY + 10
+            );
 
-        doc.fillColor('#000000');
-        doc.moveDown(0.3);
-
-        // Day summary
+        // Day totals on the right
         doc.fontSize(10)
             .font('Helvetica')
             .text(
-                `Total del día: ${day.dailyTotal.transactions} transacciones | ` +
-                `${day.dailyTotal.points} puntos | ${day.dailyTotal.stamps} sellos`
+                `${day.dailyTotal.transactions} transacciones | ${day.dailyTotal.points} pts | ${day.dailyTotal.stamps} sellos`,
+                doc.page.width - 350,
+                dayHeaderY + 12,
+                { width: 280, align: 'right' }
             );
 
-        doc.moveDown(0.5);
+        doc.y = dayHeaderY + dayHeaderHeight + 10;
+        doc.fillColor(COLORS.text);
 
         // Shifts for this day
         for (const shift of day.shifts) {
-            addShiftDetail(doc, shift);
+            addShiftDetailBox(doc, shift);
         }
 
-        doc.moveDown(1);
-
-        // Separator line
-        doc.strokeColor('#EEEEEE')
-            .lineWidth(1)
-            .moveTo(50, doc.y)
-            .lineTo(562, doc.y)
-            .stroke();
-
-        doc.moveDown(1);
+        doc.moveDown(1.5);
     }
 }
 
 /**
- * Add shift detail section
+ * Add shift detail in a styled box
  */
-function addShiftDetail(doc: PDFKit.PDFDocument, shift: ShiftSummary): void {
-    // Check if we need a new page
-    if (doc.y > 680) {
+function addShiftDetailBox(doc: PDFKit.PDFDocument, shift: ShiftSummary): void {
+    if (doc.y > 700) {
         doc.addPage();
     }
 
+    const boxX = 70;
+    const boxWidth = doc.page.width - 140;
+    const startY = doc.y;
+
     // Shift header with color indicator
-    const shiftY = doc.y;
+    const headerHeight = 25;
 
-    // Color box
-    doc.fillColor(shift.shiftColor)
-        .rect(50, shiftY, 10, 10)
-        .fill();
-
-    doc.fillColor('#000000');
+    // Color indicator bar
+    doc.rect(boxX, startY, 5, headerHeight)
+        .fill(shift.shiftColor);
 
     // Shift name and time
     doc.fontSize(11)
         .font('Helvetica-Bold')
-        .text(`${shift.shiftName} (${shift.shiftTime})`, 65, shiftY);
+        .fillColor(COLORS.text)
+        .text(`${shift.shiftName}`, boxX + 15, startY + 5);
 
-    doc.moveDown(0.5);
-
-    // Shift summary
     doc.fontSize(9)
         .font('Helvetica')
+        .fillColor(COLORS.textLight)
+        .text(shift.shiftTime, boxX + 15, startY + 18);
+
+    // Shift metrics on the right
+    doc.fontSize(9)
+        .fillColor(COLORS.textLight)
         .text(
-            `${shift.totalTransactions} transacciones | ` +
-            `${shift.totalPoints} puntos | ${shift.totalStamps} sellos`,
-            65
+            `${shift.totalTransactions} trans. | ${shift.totalPoints} pts | ${shift.totalStamps} sellos`,
+            doc.page.width - 250,
+            startY + 8,
+            { width: 180, align: 'right' }
         );
 
-    doc.moveDown(0.5);
+    doc.y = startY + headerHeight + 5;
 
-    // System breakdown for this shift
+    // System breakdown
     if (shift.systemBreakdown.length > 0) {
-        doc.fontSize(9).font('Helvetica-Oblique').fillColor('#666666');
-        for (const system of shift.systemBreakdown) {
-            const systemText = `  • ${system.systemName}: ${system.transactions} transacciones`;
-            const details = system.systemType === 'points'
-                ? ` (${system.points} puntos)`
-                : ` (${system.stamps} sellos)`;
-            doc.text(systemText + details, 65);
-        }
-        doc.fillColor('#000000');
+        shift.systemBreakdown.forEach(system => {
+            doc.fontSize(8)
+                .font('Helvetica')
+                .fillColor(COLORS.textLight)
+                .text(
+                    `  • ${system.systemName}: ${system.transactions} transacciones ` +
+                    `(${system.systemType === 'points' ? system.points + ' pts' : system.stamps + ' sellos'})`,
+                    boxX + 15,
+                    doc.y
+                );
+            doc.moveDown(0.3);
+        });
     }
 
+    // Bottom border
+    doc.strokeColor(COLORS.border)
+        .lineWidth(0.5)
+        .moveTo(boxX, doc.y + 5)
+        .lineTo(boxX + boxWidth, doc.y + 5)
+        .stroke();
+
     doc.moveDown(0.8);
+    doc.fillColor(COLORS.text);
 }
 
 /**
- * Add footer with generation date
- * Note: This should be called BEFORE finalizing the document
+ * Add section title with underline
+ */
+function addSectionTitle(doc: PDFKit.PDFDocument, title: string): void {
+    doc.fontSize(13)
+        .font('Helvetica-Bold')
+        .fillColor(COLORS.primary)
+        .text(title, 50, doc.y);
+
+    const titleWidth = doc.widthOfString(title);
+    const lineY = doc.y + 2;
+
+    doc.strokeColor(COLORS.primary)
+        .lineWidth(2)
+        .moveTo(50, lineY)
+        .lineTo(50 + titleWidth, lineY)
+        .stroke();
+
+    doc.moveDown(1);
+    doc.fillColor(COLORS.text);
+}
+
+/**
+ * Draw a professional table with borders and shading
+ */
+function drawProfessionalTable(
+    doc: PDFKit.PDFDocument,
+    config: {
+        headers: string[];
+        rows: string[][];
+        columnWidths: number[];
+    }
+): void {
+    const startX = 50;
+    const startY = doc.y;
+    const rowHeight = 25;
+    const headerHeight = 30;
+
+    // Calculate total width
+    const totalWidth = config.columnWidths.reduce((a, b) => a + b, 0);
+
+    // Draw header background
+    doc.rect(startX, startY, totalWidth, headerHeight)
+        .fill(COLORS.primary);
+
+    // Draw header text
+    doc.fontSize(10)
+        .font('Helvetica-Bold')
+        .fillColor(COLORS.white);
+
+    let currentX = startX;
+    config.headers.forEach((header, i) => {
+        doc.text(
+            header,
+            currentX + 10,
+            startY + 10,
+            { width: config.columnWidths[i] - 20, align: 'left' }
+        );
+        currentX += config.columnWidths[i];
+    });
+
+    // Draw rows
+    doc.font('Helvetica').fontSize(9).fillColor(COLORS.text);
+    let currentY = startY + headerHeight;
+
+    config.rows.forEach((row, rowIndex) => {
+        // Alternate row background
+        if (rowIndex % 2 === 0) {
+            doc.rect(startX, currentY, totalWidth, rowHeight)
+                .fill(COLORS.background);
+        }
+
+        currentX = startX;
+        row.forEach((cell, colIndex) => {
+            const isNumeric = colIndex > 0; // First column is text, rest are numbers
+            doc.fillColor(COLORS.text)
+                .text(
+                    cell,
+                    currentX + 10,
+                    currentY + 8,
+                    {
+                        width: config.columnWidths[colIndex] - 20,
+                        align: isNumeric ? 'right' : 'left'
+                    }
+                );
+            currentX += config.columnWidths[colIndex];
+        });
+
+        currentY += rowHeight;
+    });
+
+    // Draw table borders
+    doc.strokeColor(COLORS.border).lineWidth(0.5);
+
+    // Vertical lines
+    currentX = startX;
+    config.columnWidths.forEach((width, i) => {
+        if (i > 0) {
+            doc.moveTo(currentX, startY)
+                .lineTo(currentX, currentY)
+                .stroke();
+        }
+        currentX += width;
+    });
+
+    // Horizontal lines
+    doc.rect(startX, startY, totalWidth, currentY - startY)
+        .stroke();
+
+    doc.y = currentY + 5;
+}
+
+/**
+ * Add footer with generation info
  */
 function addFooter(doc: PDFKit.PDFDocument, generatedAt: Date): void {
-    // Get current page count
     const range = doc.bufferedPageRange();
     const pageCount = range.count;
 
-    // Add footer to each page
     for (let pageNum = range.start; pageNum < range.start + pageCount; pageNum++) {
         try {
             doc.switchToPage(pageNum);
 
+            const footerY = doc.page.height - 40;
+
+            // Footer line
+            doc.strokeColor(COLORS.border)
+                .lineWidth(0.5)
+                .moveTo(50, footerY - 10)
+                .lineTo(doc.page.width - 50, footerY - 10)
+                .stroke();
+
             // Footer text
             doc.fontSize(8)
                 .font('Helvetica')
-                .fillColor('#999999')
+                .fillColor(COLORS.textLight)
                 .text(
-                    `Generado el ${formatDateTime(generatedAt)} | Página ${pageNum - range.start + 1} de ${pageCount}`,
+                    `Generado el ${formatDateTime(generatedAt)}`,
                     50,
-                    doc.page.height - 50,
-                    { align: 'center', width: doc.page.width - 100 }
+                    footerY,
+                    { width: 200, align: 'left' }
                 );
+
+            doc.text(
+                `Página ${pageNum - range.start + 1} de ${pageCount}`,
+                doc.page.width - 150,
+                footerY,
+                { width: 100, align: 'right' }
+            );
         } catch (err) {
-            console.error(`[addFooter] Error adding footer to page ${pageNum}:`, err);
+            console.error(`[addFooter] Error on page ${pageNum}:`, err);
         }
     }
 
-    doc.fillColor('#000000');
+    doc.fillColor(COLORS.text);
 }
 
 /**
@@ -446,7 +573,7 @@ function formatDateTime(date: Date): string {
     const dateStr = formatDate(d);
     const hours = d.getHours().toString().padStart(2, '0');
     const minutes = d.getMinutes().toString().padStart(2, '0');
-    return `${dateStr} ${hours}:${minutes}`;
+    return `${dateStr} a las ${hours}:${minutes}`;
 }
 
 /**
