@@ -7,6 +7,7 @@
  */
 import bcrypt from 'bcryptjs';
 import { UserModel, IUser } from '../models/user.model';
+import { BusinessModel } from '../models/business.model';
 
 /**
  * Convert a Mongoose document into a plain public object used by the API.
@@ -197,7 +198,7 @@ export const verifyUserEmail = async (token: string) => {
  * @returns reset token if user exists, undefined otherwise
  */
 export const generatePasswordResetToken = async (email: string): Promise<string | undefined> => {
-    const doc = await UserModel.findOne({ email: email.toLowerCase() }).exec();
+    const doc = await (UserModel.findOne({ email: email.toLowerCase() }).exec() || BusinessModel.findOne({ email: email.toLowerCase() }).exec());
     if (!doc) return undefined;
 
     const crypto = await import('crypto');
