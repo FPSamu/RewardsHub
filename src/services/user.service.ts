@@ -7,7 +7,7 @@
  */
 import bcrypt from 'bcryptjs';
 import { UserModel, IUser } from '../models/user.model';
-import { BusinessModel } from '../models/business.model';
+import { BusinessModel, IBusiness } from '../models/business.model';
 
 /**
  * Convert a Mongoose document into a plain public object used by the API.
@@ -20,6 +20,16 @@ const toPublic = (doc: IUser) => ({
     email: doc.email,
     passHash: doc.passHash,
     profilePicture: doc.profilePicture,
+    isVerified: doc.isVerified,
+    createdAt: doc.createdAt.toISOString(),
+});
+
+const toPublicBiz = (doc: IBusiness) => ({
+    id: doc._id.toString(),
+    name: doc.name,
+    email: doc.email,
+    passHash: doc.passHash,
+    logoUrl: doc.logoUrl,
     isVerified: doc.isVerified,
     createdAt: doc.createdAt.toISOString(),
 });
@@ -218,16 +228,32 @@ export const generatePasswordResetToken = async (email: string): Promise<string 
  * @returns user object if successful, undefined otherwise
  */
 export const resetPassword = async (token: string, newPassword: string) => {
-    const doc = await UserModel.findOne({
-        resetPasswordToken: token,
-        resetPasswordExpires: { $gt: new Date() },
-    }).exec();
+    const docUser = await UserModel.findOne({
+            resetPasswordToken: token, 
+            resetPasswordExpires: { 
+                $gt: new Date() 
+            }}).exec();
 
-    if (!doc) return undefined;
+    const docBiz = await BusinessModel.findOne({
+            resetPasswordToken: token, 
+            resetPasswordExpires: { 
+                $gt: new Date() 
+            }}).exec()
 
-    doc.passHash = await bcrypt.hash(newPassword, 10);
-    doc.resetPasswordToken = undefined;
-    doc.resetPasswordExpires = undefined;
-    await doc.save();
-    return toPublic(doc as IUser);
+    if (!docUser && !docBiz) return undefined;
+
+    if (docUser) {
+        docUser.passHash = await bcrypt.hash(newPassword, 10);
+        docUser.resetPasswordToken = undefined;
+        docUser.resetPasswordExpires = undefined;
+        await docUser.save();
+        return toPublic(docUser as IUser);
+    } else if (docBiz) {
+        docBiz.passHash = await bcrypt.hash(newPassword, 10);
+        docBiz.resetPasswordToken = undefined;
+        docBiz.resetPasswordExpires = undefined;
+        await docBiz.save();
+        return toPublicBiz(docBiz as IBusiness);
+    }
+    
 };
