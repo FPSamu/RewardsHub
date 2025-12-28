@@ -85,15 +85,29 @@ export const forgotPassword = async (req: Request, res: Response) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email required' });
 
+    console.log('🔵 [BUSINESS FORGOT PASSWORD] Request received for:', email);
+
     const token = await businessService.generatePasswordResetToken(email);
+
+    console.log('🟡 [BUSINESS FORGOT PASSWORD] Token generation result:', {
+        email,
+        hasToken: !!token,
+        tokenLength: token ? token.length : 0
+    });
+
     if (token) {
         try {
+            console.log('🔵 [BUSINESS FORGOT PASSWORD] Attempting to send email...');
             await emailService.sendPasswordResetEmail(email, token, true);
+            console.log('✅ [BUSINESS FORGOT PASSWORD] Email sent successfully');
         } catch (error) {
-            console.error('Failed to send reset email:', error);
+            console.error('❌ [BUSINESS FORGOT PASSWORD] Failed to send reset email:', error);
             return res.status(500).json({ message: 'Failed to send email' });
         }
+    } else {
+        console.log('⚠️  [BUSINESS FORGOT PASSWORD] No token generated (business not found)');
     }
+
     // Always return success to prevent email enumeration
     return res.json({ message: 'If an account exists, a reset email has been sent' });
 };

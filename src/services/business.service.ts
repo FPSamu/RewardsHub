@@ -92,13 +92,32 @@ export const verifyBusinessEmail = async (token: string) => {
 };
 
 export const generatePasswordResetToken = async (email: string) => {
+    console.log('🔵 [BUSINESS] generatePasswordResetToken called for:', email);
+
     const doc = await BusinessModel.findOne({ email: email.toLowerCase() }).exec();
-    if (!doc) return null;
+
+    if (!doc) {
+        console.log('❌ [BUSINESS] No business found with email:', email);
+        return null;
+    }
+
+    console.log('✅ [BUSINESS] Business found:', {
+        id: doc._id,
+        email: doc.email,
+        name: doc.name
+    });
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     doc.resetPasswordToken = resetToken;
     doc.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+
     await doc.save();
+
+    console.log('✅ [BUSINESS] Reset token generated and saved:', {
+        email: doc.email,
+        tokenLength: resetToken.length,
+        expiresAt: doc.resetPasswordExpires
+    });
 
     return resetToken;
 };
