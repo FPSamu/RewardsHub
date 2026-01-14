@@ -348,8 +348,8 @@ export const findNearbyBusinesses = async (
                 }
             }
         },
-        // 'location': { $exists: true },
-        'isVerified': true
+        'isVerified': true,
+        'status': 'active'
     };
 
     const businesses = await BusinessModel.find(query).exec();
@@ -485,7 +485,10 @@ export const getAllBusinesses = async (
     limit: number = 100
 ) => {
     if (latitude === undefined || longitude === undefined) {
-        const query: any = { status: 'active' };
+        const query: any = {
+            status: 'active',
+            isVerified: true
+        };
         const docs = await BusinessModel.find(query).limit(limit).exec();
         return docs.map(doc => toPublic(doc as IBusiness));
     }
