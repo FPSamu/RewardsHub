@@ -5,7 +5,7 @@
  * It queries transactions, groups them by day and shift, and calculates totals.
  */
 
-import { TransactionModel } from '../models/transaction.model';
+import { TransactionModel, TransactionType } from '../models/transaction.model';
 import { WorkShiftModel } from '../models/workShift.model';
 import { BusinessModel } from '../models/business.model';
 import { Types } from 'mongoose';
@@ -18,6 +18,7 @@ export interface ReportFilters {
     startDate: Date;
     endDate: Date;
     shiftIds?: string[];  // Optional: filter by specific shifts
+    types?: TransactionType[]; // Optional: filter by transaction types
 }
 
 /**
@@ -47,6 +48,7 @@ export interface TransactionDetail {
     systemType: 'points' | 'stamps';
     points: number;
     stamps: number;
+    type?: TransactionType;
 }
 
 /**
@@ -95,6 +97,22 @@ export interface ReportData {
         totalDays: number;
     };
     dailyData: DailyReport[];
+    branchSummary: Array<{
+        branchId: string | null;
+        branchName: string;
+        totals: {
+            transactions: number;
+            points: number;
+            stamps: number;
+        };
+        shifts: Array<{
+            shiftId: string | null;
+            shiftName: string;
+            transactions: number;
+            points: number;
+            stamps: number;
+        }>;
+    }>;
     periodSummary: {
         totalsByShift: Array<{
             shiftName: string;
@@ -133,6 +151,11 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
     // Filter by specific shifts if provided
     if (shiftIds && shiftIds.length > 0) {
         query.workShiftId = { $in: shiftIds.map(id => new Types.ObjectId(id)) };
+    }
+
+    // Filter by transaction types if provided
+    if (filters.types && filters.types.length > 0) {
+        query.type = { $in: filters.types };
     }
 
     // Fetch transactions
@@ -193,14 +216,21 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
         totalStamps += dayTotalStamps;
     }
 
-    // Calculate period summaries
-    const totalsByShift = calculateTotalsByShift(dailyData);
-    const totalsBySystem = calculateTotalsBySystem(transactions);
-
-    // Fetch business data to get name and logo
+    // Fetch business data to get name, logo, and branch names
     const business = await BusinessModel.findById(businessId).exec();
     const businessName = business?.name || 'Business';
     const logoUrl = business?.logoUrl;
+    const branchNameById = new Map<string, string>();
+    if (business?.locations) {
+        for (const loc of business.locations) {
+            branchNameById.set(loc._id.toString(), loc.name || loc.formattedAddress || 'Sucursal');
+        }
+    }
+
+    // Calculate period summaries
+    const totalsByShift = calculateTotalsByShift(dailyData);
+    const totalsBySystem = calculateTotalsBySystem(transactions);
+    const branchSummary = buildBranchSummary(transactions, shiftsMap, branchNameById);
 
     return {
         metadata: {
@@ -220,6 +250,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
             totalDays: dailyData.length,
         },
         dailyData,
+        branchSummary,
         periodSummary: {
             totalsByShift,
             totalsBySystem,
@@ -300,16 +331,17 @@ function buildShiftSummary(
                 clientName,
                 clientId: transaction.userId?._id?.toString() || '',
                 systemName: item.rewardSystemName,
-                systemType: item.pointsChange > 0 ? 'points' : 'stamps',
+                systemType: item.pointsChange !== 0 ? 'points' : 'stamps',
                 points: item.pointsChange,
                 stamps: item.stampsChange,
+                type: transaction.type,
             });
 
             // Aggregate by system
             const systemKey = item.rewardSystemName;
             if (!systemsMap.has(systemKey)) {
                 systemsMap.set(systemKey, {
-                    type: item.pointsChange > 0 ? 'points' : 'stamps',
+                    type: item.pointsChange !== 0 ? 'points' : 'stamps',
                     points: 0,
                     stamps: 0,
                     count: 0,
@@ -397,7 +429,7 @@ function calculateTotalsBySystem(transactions: any[]): Array<{
             const systemKey = item.rewardSystemName;
             if (!systemsMap.has(systemKey)) {
                 systemsMap.set(systemKey, {
-                    type: item.pointsChange > 0 ? 'points' : 'stamps',
+                    type: item.pointsChange !== 0 ? 'points' : 'stamps',
                     count: 0,
                     points: 0,
                     stamps: 0,
@@ -417,4 +449,86 @@ function calculateTotalsBySystem(transactions: any[]): Array<{
         points: data.points,
         stamps: data.stamps,
     }));
+}
+
+/**
+ * Build branch summary with per-branch totals and per-branch shift totals.
+ */
+type BranchShiftTotals = {
+    shiftId: string | null;
+    shiftName: string;
+    transactions: number;
+    points: number;
+    stamps: number;
+};
+
+type BranchTotals = {
+    transactions: number;
+    points: number;
+    stamps: number;
+};
+
+type BranchBucket = {
+    branchId: string | null;
+    totals: BranchTotals;
+    shifts: Map<string, BranchShiftTotals>;
+};
+
+function buildBranchSummary(
+    transactions: any[],
+    shiftsMap: Map<string, any>,
+    branchNameById: Map<string, string>
+): Array<{
+    branchId: string | null;
+    branchName: string;
+    totals: BranchTotals;
+    shifts: BranchShiftTotals[];
+}> {
+    const branchMap = new Map<string, BranchBucket>();
+
+    for (const t of transactions) {
+        const branchKey = t.branchId ? t.branchId.toString() : 'no-branch';
+        if (!branchMap.has(branchKey)) {
+            branchMap.set(branchKey, {
+                branchId: branchKey === 'no-branch' ? null : branchKey,
+                totals: { transactions: 0, points: 0, stamps: 0 },
+                shifts: new Map<string, BranchShiftTotals>(),
+            });
+        }
+
+        const bucket = branchMap.get(branchKey)!;
+        bucket.totals.transactions += 1;
+        bucket.totals.points += t.totalPointsChange || 0;
+        bucket.totals.stamps += t.totalStampsChange || 0;
+
+        const shiftKey = t.workShiftId ? t.workShiftId.toString() : 'no-shift';
+        if (!bucket.shifts.has(shiftKey)) {
+            const shift = shiftKey !== 'no-shift' ? shiftsMap.get(shiftKey) : null;
+            bucket.shifts.set(shiftKey, {
+                shiftId: shift?._id?.toString() || null,
+                shiftName: shift ? shift.name : 'Sin turno asignado',
+                transactions: 0,
+                points: 0,
+                stamps: 0,
+            });
+        }
+        const shiftBucket = bucket.shifts.get(shiftKey)!;
+        shiftBucket.transactions += 1;
+        shiftBucket.points += t.totalPointsChange || 0;
+        shiftBucket.stamps += t.totalStampsChange || 0;
+    }
+
+    return Array.from(branchMap.entries()).map(([branchKey, data]) => {
+        const shifts = Array.from(data.shifts.values());
+        const branchName =
+            branchKey === 'no-branch'
+                ? 'Sin sucursal asignada'
+                : branchNameById.get(branchKey) || 'Sucursal';
+        return {
+            branchId: data.branchId,
+            branchName,
+            totals: data.totals,
+            shifts,
+        };
+    });
 }

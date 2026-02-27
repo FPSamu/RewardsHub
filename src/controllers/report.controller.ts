@@ -28,7 +28,7 @@ export async function generateReport(req: Request, res: Response) {
             return res.status(401).json({ message: 'Authentication required' });
         }
 
-        const { startDate, endDate, shiftIds } = req.body;
+        const { startDate, endDate, shiftIds, types } = req.body;
 
         // Validate required fields
         if (!startDate || !endDate) {
@@ -37,9 +37,17 @@ export async function generateReport(req: Request, res: Response) {
             });
         }
 
-        // Parse dates
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+        // Parse dates (support YYYY-MM-DD as local date)
+        const parseInputDate = (value: string): Date => {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                const [y, m, d] = value.split('-').map(Number);
+                return new Date(y, m - 1, d);
+            }
+            return new Date(value);
+        };
+
+        const start = parseInputDate(startDate);
+        const end = parseInputDate(endDate);
 
         // Validate dates
         if (isNaN(start.getTime()) || isNaN(end.getTime())) {
@@ -75,6 +83,7 @@ export async function generateReport(req: Request, res: Response) {
             startDate: start,
             endDate: end,
             shiftIds,
+            types,
         });
 
         console.log(`[generateReport] Report data generated: ${reportData.summary.totalTransactions} transactions`);
@@ -122,7 +131,7 @@ export async function getReportPreview(req: Request, res: Response) {
             return res.status(401).json({ message: 'Authentication required' });
         }
 
-        const { startDate, endDate, shiftIds } = req.body;
+        const { startDate, endDate, shiftIds, types } = req.body;
 
         // Validate required fields
         if (!startDate || !endDate) {
@@ -131,9 +140,17 @@ export async function getReportPreview(req: Request, res: Response) {
             });
         }
 
-        // Parse dates
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+        // Parse dates (support YYYY-MM-DD as local date)
+        const parseInputDate = (value: string): Date => {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                const [y, m, d] = value.split('-').map(Number);
+                return new Date(y, m - 1, d);
+            }
+            return new Date(value);
+        };
+
+        const start = parseInputDate(startDate);
+        const end = parseInputDate(endDate);
 
         // Validate dates
         if (isNaN(start.getTime()) || isNaN(end.getTime())) {
@@ -157,6 +174,7 @@ export async function getReportPreview(req: Request, res: Response) {
             startDate: start,
             endDate: end,
             shiftIds,
+            types,
         });
 
         // Return report data as JSON

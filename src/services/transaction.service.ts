@@ -15,6 +15,7 @@ export interface PublicTransaction {
     id: string;
     userId: string;
     businessId: string;
+    branchId?: string;
     businessName: string;
     type: TransactionType;
     purchaseAmount?: number;
@@ -44,6 +45,7 @@ const toPublic = (doc: ITransaction): PublicTransaction => ({
     id: doc._id.toString(),
     userId: doc.userId.toString(),
     businessId: doc.businessId.toString(),
+    branchId: doc.branchId?.toString(),
     businessName: doc.businessName,
     type: doc.type,
     purchaseAmount: doc.purchaseAmount,
@@ -70,6 +72,7 @@ const toPublic = (doc: ITransaction): PublicTransaction => ({
 export const createTransaction = async (
     userId: string,
     businessId: string,
+    branchId: string | undefined,
     businessName: string,
     type: TransactionType,
     items: Array<{
@@ -125,6 +128,7 @@ export const createTransaction = async (
     const doc = await TransactionModel.create({
         userId: new Types.ObjectId(userId),
         businessId: new Types.ObjectId(businessId),
+        branchId: branchId ? new Types.ObjectId(branchId) : undefined,
         businessName,
         type,
         purchaseAmount,

@@ -95,6 +95,11 @@ function generatePDFContent(
     // Period summary tables
     addPeriodSummaryTables(doc, periodSummary);
 
+    // Branch summary
+    if (reportData.branchSummary && reportData.branchSummary.length > 0) {
+        addBranchSummary(doc, reportData.branchSummary);
+    }
+
     // Daily breakdown
     if (dailyData.length > 0) {
         addDailyBreakdown(doc, dailyData);
@@ -274,6 +279,58 @@ function addPeriodSummaryTables(
 }
 
 /**
+ * Add branch summary section
+ */
+function addBranchSummary(
+    doc: PDFKit.PDFDocument,
+    branchSummary: ReportData['branchSummary']
+): void {
+    if (doc.y > 600) {
+        doc.addPage();
+    }
+
+    addSectionTitle(doc, 'RESUMEN POR SUCURSAL');
+
+    drawProfessionalTable(doc, {
+        headers: ['Sucursal', 'Transacciones', 'Puntos', 'Sellos'],
+        rows: branchSummary.map(branch => [
+            branch.branchName,
+            branch.totals.transactions.toLocaleString(),
+            branch.totals.points.toLocaleString(),
+            branch.totals.stamps.toLocaleString(),
+        ]),
+        columnWidths: [220, 110, 110, 110],
+    });
+
+    doc.moveDown(1.5);
+
+    for (const branch of branchSummary) {
+        if (doc.y > 650) {
+            doc.addPage();
+        }
+
+        doc.fontSize(11)
+            .font('Helvetica-Bold')
+            .fillColor(COLORS.text)
+            .text(`Sucursal: ${branch.branchName}`, 50, doc.y);
+        doc.moveDown(0.6);
+
+        drawProfessionalTable(doc, {
+            headers: ['Turno', 'Transacciones', 'Puntos', 'Sellos'],
+            rows: branch.shifts.map(shift => [
+                shift.shiftName,
+                shift.transactions.toLocaleString(),
+                shift.points.toLocaleString(),
+                shift.stamps.toLocaleString(),
+            ]),
+            columnWidths: [200, 120, 120, 120],
+        });
+
+        doc.moveDown(1.2);
+    }
+}
+
+/**
  * Add daily breakdown section
  */
 function addDailyBreakdown(doc: PDFKit.PDFDocument, dailyData: DailyReport[]): void {
@@ -431,81 +488,90 @@ function drawProfessionalTable(
     }
 ): void {
     const startX = 50;
-    const startY = doc.y;
     const rowHeight = 25;
     const headerHeight = 30;
+    const pageBottom = doc.page.height - 60;
 
     // Calculate total width
     const totalWidth = config.columnWidths.reduce((a, b) => a + b, 0);
 
-    // Draw header background
-    doc.rect(startX, startY, totalWidth, headerHeight)
-        .fill(COLORS.primary);
+    const drawHeader = (y: number) => {
+        doc.rect(startX, y, totalWidth, headerHeight)
+            .fill(COLORS.primary);
 
-    // Draw header text
-    doc.fontSize(10)
-        .font('Helvetica-Bold')
-        .fillColor(COLORS.white);
+        doc.fontSize(10)
+            .font('Helvetica-Bold')
+            .fillColor(COLORS.white);
 
-    let currentX = startX;
-    config.headers.forEach((header, i) => {
-        doc.text(
-            header,
-            currentX + 10,
-            startY + 10,
-            { width: config.columnWidths[i] - 20, align: 'left' }
-        );
-        currentX += config.columnWidths[i];
-    });
+        let x = startX;
+        config.headers.forEach((header, i) => {
+            doc.text(
+                header,
+                x + 10,
+                y + 10,
+                { width: config.columnWidths[i] - 20, align: 'left' }
+            );
+            x += config.columnWidths[i];
+        });
+    };
 
-    // Draw rows
+    const drawBorders = (yStart: number, yEnd: number) => {
+        doc.strokeColor(COLORS.border).lineWidth(0.5);
+
+        let x = startX;
+        config.columnWidths.forEach((width, i) => {
+            if (i > 0) {
+                doc.moveTo(x, yStart)
+                    .lineTo(x, yEnd)
+                    .stroke();
+            }
+            x += width;
+        });
+
+        doc.rect(startX, yStart, totalWidth, yEnd - yStart)
+            .stroke();
+    };
+
+    let segmentStartY = doc.y;
+    drawHeader(segmentStartY);
+
     doc.font('Helvetica').fontSize(9).fillColor(COLORS.text);
-    let currentY = startY + headerHeight;
+    let currentY = segmentStartY + headerHeight;
 
     config.rows.forEach((row, rowIndex) => {
-        // Alternate row background
+        if (currentY + rowHeight > pageBottom) {
+            drawBorders(segmentStartY, currentY);
+            doc.addPage();
+            segmentStartY = doc.y;
+            drawHeader(segmentStartY);
+            currentY = segmentStartY + headerHeight;
+        }
+
         if (rowIndex % 2 === 0) {
             doc.rect(startX, currentY, totalWidth, rowHeight)
                 .fill(COLORS.background);
         }
 
-        currentX = startX;
+        let x = startX;
         row.forEach((cell, colIndex) => {
-            const isNumeric = colIndex > 0; // First column is text, rest are numbers
+            const isNumeric = colIndex > 0;
             doc.fillColor(COLORS.text)
                 .text(
                     cell,
-                    currentX + 10,
+                    x + 10,
                     currentY + 8,
                     {
                         width: config.columnWidths[colIndex] - 20,
-                        align: isNumeric ? 'right' : 'left'
+                        align: isNumeric ? 'right' : 'left',
                     }
                 );
-            currentX += config.columnWidths[colIndex];
+            x += config.columnWidths[colIndex];
         });
 
         currentY += rowHeight;
     });
 
-    // Draw table borders
-    doc.strokeColor(COLORS.border).lineWidth(0.5);
-
-    // Vertical lines
-    currentX = startX;
-    config.columnWidths.forEach((width, i) => {
-        if (i > 0) {
-            doc.moveTo(currentX, startY)
-                .lineTo(currentX, currentY)
-                .stroke();
-        }
-        currentX += width;
-    });
-
-    // Horizontal lines
-    doc.rect(startX, startY, totalWidth, currentY - startY)
-        .stroke();
-
+    drawBorders(segmentStartY, currentY);
     doc.y = currentY + 5;
 }
 
@@ -553,6 +619,10 @@ function addFooter(doc: PDFKit.PDFDocument, generatedAt: Date): void {
 
     doc.fillColor(COLORS.text);
 }
+
+/**
+ * Format currency with a generic locale fallback
+ */
 
 /**
  * Format date as DD/MM/YYYY

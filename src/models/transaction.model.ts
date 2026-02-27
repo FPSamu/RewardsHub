@@ -28,6 +28,7 @@ export interface ITransaction extends Document {
     _id: any;
     userId: Types.ObjectId; // Reference to the user
     businessId: Types.ObjectId; // Reference to the business
+    branchId?: Types.ObjectId; // Reference to the business branch (location)
     businessName: string; // Store business name for historical purposes
     type: TransactionType; // Type of transaction
 
@@ -66,6 +67,7 @@ const transactionSchema = new Schema<ITransaction>(
     {
         userId: { type: Schema.Types.ObjectId, required: true, ref: 'User', index: true },
         businessId: { type: Schema.Types.ObjectId, required: true, ref: 'Business', index: true },
+        branchId: { type: Schema.Types.ObjectId },
         businessName: { type: String, required: true },
         type: {
             type: String,

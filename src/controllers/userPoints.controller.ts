@@ -10,6 +10,33 @@ import * as userService from '../services/user.service';
 import * as transactionService from '../services/transaction.service';
 import * as businessService from '../services/business.service';
 
+const resolveBranchId = (business: any, branchId?: string): { id?: string } => {
+    const locations = business?.locations || [];
+
+    if (branchId) {
+        const match = locations.find((loc: any) => loc?._id?.toString() === branchId);
+        if (!match) {
+            throw new Error('branchId does not belong to this business');
+        }
+        return { id: match._id.toString() };
+    }
+
+    if (locations.length === 1) {
+        return { id: locations[0]._id.toString() };
+    }
+
+    const main = locations.find((loc: any) => loc?.isMain);
+    if (main) {
+        return { id: main._id.toString() };
+    }
+
+    if (locations.length > 1) {
+        throw new Error('branchId is required for businesses with multiple branches');
+    }
+
+    return {};
+};
+
 /**
  * Add points and/or stamps to a user after a purchase.
  * Expects:
@@ -23,7 +50,7 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'not authenticated' });
     }
 
-    const { userId, purchaseAmount, stampData } = req.body as {
+    const { userId, purchaseAmount, stampData, branchId, locationId } = req.body as {
         userId?: string;
         purchaseAmount?: number;
         stampData?: Array<{
@@ -31,6 +58,8 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
             stampsCount: number;
             productIdentifier?: string;
         }>;
+        branchId?: string;
+        locationId?: string;
     };
 
     // Validate required fields
@@ -131,9 +160,12 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
             });
         }
 
+        const resolvedBranch = resolveBranchId(business, locationId || branchId);
+
         const transaction = await transactionService.createTransaction(
             userId,
             business.id,
+            resolvedBranch.id,
             business.name,
             'add',
             transactionItems,
@@ -290,7 +322,7 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'not authenticated' });
     }
 
-    const { userId, pointsToSubtract, rewardSystemId, stampData } = req.body as {
+    const { userId, pointsToSubtract, rewardSystemId, stampData, branchId, locationId } = req.body as {
         userId?: string;
         pointsToSubtract?: number;
         rewardSystemId?: string;
@@ -298,6 +330,8 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
             rewardSystemId: string;
             stampsCount: number;
         }>;
+        branchId?: string;
+        locationId?: string;
     };
 
     // Validate required fields
@@ -394,9 +428,12 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
             });
         }
 
+        const resolvedBranch = resolveBranchId(business, locationId || branchId);
+
         const transaction = await transactionService.createTransaction(
             userId,
             business.id,
+            resolvedBranch.id,
             business.name,
             'subtract',
             transactionItems,
@@ -418,4 +455,3 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(500).json({ message: 'failed to subtract points/stamps' });
     }
 };
-
