@@ -172,7 +172,8 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
             purchaseAmount,
             undefined,
             undefined,
-            'Purchase transaction'
+            'Purchase transaction',
+            business.timezone
         );
 
         return res.status(200).json({
@@ -440,7 +441,8 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
             undefined,
             undefined,
             undefined,
-            'Points/stamps subtraction'
+            'Points/stamps subtraction',
+            business.timezone
         );
 
         return res.status(200).json({

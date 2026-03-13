@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { RedemptionCodeModel } from '../models/redemptionCode.model';
-import { TransactionModel } from '../models/transaction.model';
+import * as transactionService from '../services/transaction.service';
 import * as systemService from '../services/system.service';
 import * as userPointsService from '../services/userPoints.service';
 import { calculatePoints } from '../services/userPoints.service';
@@ -151,18 +151,27 @@ export const claimCode = async (req: Request, res: Response, next: NextFunction)
         );
 
         const business = await BusinessModel.findById(redemption.businessId);
-        
-        await TransactionModel.create({
-            userId: userId,
-            businessId: redemption.businessId,
-            businessName: business ? business.name : 'Unknown Business',
-            type: 'add',
-            purchaseAmount: redemption.amount,
-            items: transactionItems,
-            totalPointsChange: pointsAdded,
-            totalStampsChange: stampSystemsToAdd.reduce((sum, s) => sum + s.count, 0),
-            notes: `Pedido a domicilio (Código: ${redemption.code})`
-        });
+
+        const transactionItemsForService = transactionItems.map(item => ({
+            rewardSystemId: item.rewardSystemId.toString(),
+            rewardSystemName: item.rewardSystemName,
+            pointsChange: item.pointsChange,
+            stampsChange: item.stampsChange,
+        }));
+
+        await transactionService.createTransaction(
+            userId,
+            redemption.businessId.toString(),
+            undefined,
+            business ? business.name : 'Unknown Business',
+            'add',
+            transactionItemsForService,
+            redemption.amount,
+            undefined,
+            undefined,
+            `Pedido a domicilio (Código: ${redemption.code})`,
+            business?.timezone ?? 'UTC'
+        );
 
         redemption.isRedeemed = true;
         redemption.redeemedBy = userId;

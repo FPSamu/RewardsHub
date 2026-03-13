@@ -40,33 +40,65 @@ function isTimeInShift(transactionTime: number, shiftStart: number, shiftEnd: nu
 }
 
 /**
+ * Get the local hours and minutes of a date in a specific IANA timezone.
+ * Uses the built-in Intl API (no external dependencies required).
+ * Falls back to UTC if the timezone string is invalid.
+ *
+ * @param date - The UTC date to convert
+ * @param timezone - IANA timezone name (e.g. "America/Mexico_City")
+ * @returns Object with hours (0-23) and minutes (0-59) in the given timezone
+ */
+function getTimeInTimezone(date: Date, timezone: string): { hours: number; minutes: number } {
+    try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+        const parts = formatter.formatToParts(date);
+        const hourPart = parts.find(p => p.type === 'hour')?.value ?? '0';
+        const minutePart = parts.find(p => p.type === 'minute')?.value ?? '0';
+        // Intl can return "24" for midnight in some environments; normalise to 0
+        const hours = parseInt(hourPart, 10) % 24;
+        const minutes = parseInt(minutePart, 10);
+        return { hours, minutes };
+    } catch {
+        // Invalid timezone — fall back to UTC so the transaction is still saved
+        console.warn(`[shiftCalculator] Invalid timezone "${timezone}", falling back to UTC`);
+        return { hours: date.getUTCHours(), minutes: date.getUTCMinutes() };
+    }
+}
+
+/**
  * Find which work shift a transaction belongs to based on its timestamp
- * 
- * @param transactionDate - The date/time of the transaction
+ *
+ * @param transactionDate - The UTC date/time of the transaction
  * @param shifts - Array of active work shifts for the business
+ * @param timezone - IANA timezone of the business (e.g. "America/Mexico_City")
  * @returns The matching shift or null if no shift matches
- * 
+ *
  * @example
  * const shifts = [
  *   { name: "Matutino", startTime: "08:00", endTime: "16:00" },
  *   { name: "Vespertino", startTime: "16:00", endTime: "00:00" }
  * ];
- * const transaction = new Date("2025-12-21T10:30:00");
- * const shift = findShiftForTransaction(transaction, shifts);
+ * const transaction = new Date("2025-12-21T16:30:00Z"); // 10:30 AM in Mexico City (UTC-6)
+ * const shift = findShiftForTransaction(transaction, shifts, "America/Mexico_City");
  * // Returns: { name: "Matutino", ... }
  */
 export function findShiftForTransaction(
     transactionDate: Date,
-    shifts: IWorkShift[]
+    shifts: IWorkShift[],
+    timezone: string = 'UTC'
 ): IWorkShift | null {
     if (!shifts || shifts.length === 0) {
         return null;
     }
 
-    // Get transaction time in minutes since midnight
-    const transactionHours = transactionDate.getHours();
-    const transactionMinutes = transactionDate.getMinutes();
-    const transactionTimeInMinutes = transactionHours * 60 + transactionMinutes;
+    // Convert transaction time to business local timezone before comparing
+    const { hours, minutes } = getTimeInTimezone(transactionDate, timezone);
+    const transactionTimeInMinutes = hours * 60 + minutes;
 
     // Find the first shift that matches
     for (const shift of shifts) {

@@ -25,6 +25,7 @@ export interface IBusiness extends Document {
     address?: string;
     locations?: ILocation[];
     logoUrl?: string;
+    timezone: string; // IANA timezone name (e.g. "America/Mexico_City")
     createdAt: Date;
     refreshTokens?: string[];
     isVerified: boolean;
@@ -53,6 +54,7 @@ const businessSchema = new Schema<IBusiness>(
         // address: { type: String },
         locations: { type: [locationSchema], default: [] },
         logoUrl: { type: String },
+        timezone: { type: String, default: 'UTC' },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
         isVerified: { type: Boolean, default: false },

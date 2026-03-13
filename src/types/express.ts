@@ -15,6 +15,7 @@ export interface Business {
   createdAt: string;
   logoUrl?: string;
   category?: string;
+  timezone: string;
   isVerified: boolean;
 }
 

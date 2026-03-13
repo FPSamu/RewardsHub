@@ -139,7 +139,7 @@ export const sendRewardReminder = async (req: Request, res: Response) => {
 };
 
 export const login = async (req: Request, res: Response) => {
-    const { email, password } = req.body as { email: string; password: string };
+    const { email, password, timezone } = req.body as { email: string; password: string; timezone?: string };
     if (!email || !password) return res.status(400).json({ message: 'email and password required' });
 
     const biz = await businessService.findBusinessByEmail(email);
@@ -147,6 +147,22 @@ export const login = async (req: Request, res: Response) => {
 
     const ok = await businessService.verifyPassword(password, biz.passHash);
     if (!ok) return res.status(401).json({ message: 'invalid credentials' });
+
+    // Update business timezone if provided by the client (IANA format, e.g. "America/Mexico_City")
+    let resolvedTimezone = biz.timezone || 'UTC';
+    console.log(`[business login] timezone received: "${timezone}", current: "${biz.timezone}"`);
+    if (timezone) {
+        try {
+            // Validate it's a real IANA timezone before saving
+            Intl.DateTimeFormat(undefined, { timeZone: timezone });
+            await businessService.updateTimezone(biz.id, timezone);
+            resolvedTimezone = timezone;
+            console.log(`[business login] timezone updated to: "${timezone}"`);
+        } catch {
+            // Invalid timezone string — ignore and keep the existing one
+            console.warn(`[business login] Invalid timezone received: "${timezone}"`);
+        }
+    }
 
     const accessToken = (jwt as any).sign({ sub: biz.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: biz.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
@@ -159,6 +175,7 @@ export const login = async (req: Request, res: Response) => {
             name: biz.name,
             email: biz.email,
             role: 'business',
+            timezone: resolvedTimezone,
             isVerified: biz.isVerified
         }
     });
@@ -209,6 +226,7 @@ export const me = (req: Request, res: Response) => {
         createdAt: biz.createdAt,
         logoUrl: biz.logoUrl,
         category: biz.category,
+        timezone: biz.timezone || 'UTC',
         isVerified: biz.isVerified
     });
 };

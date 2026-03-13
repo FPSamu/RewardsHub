@@ -12,6 +12,7 @@ const toPublic = (doc: IBusiness) => ({
     address: doc.address,
     locations: doc.locations || [],
     logoUrl: doc.logoUrl,
+    timezone: doc.timezone || 'UTC',
     createdAt: doc.createdAt.toISOString(),
     isVerified: doc.isVerified,
     mainLocation: doc.locations && doc.locations.length > 0
@@ -479,6 +480,10 @@ export const findBusinessesInBounds = async (
  * @param limit - Maximum number of results (default: 100)
  * @returns Array of all businesses, ordered by distance if coordinates provided
  */
+export const updateTimezone = async (businessId: string, timezone: string): Promise<void> => {
+    await BusinessModel.findByIdAndUpdate(businessId, { $set: { timezone } });
+};
+
 export const getAllBusinesses = async (
     latitude?: number,
     longitude?: number,

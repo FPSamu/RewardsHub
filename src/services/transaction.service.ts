@@ -84,7 +84,8 @@ export const createTransaction = async (
     purchaseAmount?: number,
     rewardId?: string,
     rewardName?: string,
-    notes?: string
+    notes?: string,
+    timezone: string = 'UTC'
 ): Promise<PublicTransaction> => {
     // Calculate totals
     const totalPointsChange = items.reduce((sum, item) => sum + item.pointsChange, 0);
@@ -107,8 +108,8 @@ export const createTransaction = async (
         const activeShifts = await workShiftService.getActiveWorkShifts(businessId);
 
         if (activeShifts.length > 0) {
-            // Find which shift the current time belongs to
-            const matchingShift = findShiftForTransaction(now, activeShifts);
+            // Find which shift the current time belongs to, using the business timezone
+            const matchingShift = findShiftForTransaction(now, activeShifts, timezone);
 
             if (matchingShift) {
                 workShiftId = matchingShift._id;
