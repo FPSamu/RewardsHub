@@ -22,6 +22,9 @@ router.get('/', workShiftCtrl.getMyWorkShifts);
 // Get all work shifts for a business
 router.get('/business/:businessId', workShiftCtrl.getWorkShiftsByBusiness);
 
+// Get work shifts for a specific branch (?businessId=... required)
+router.get('/branch/:branchId', workShiftCtrl.getWorkShiftsByBranch);
+
 // Get a specific work shift
 router.get('/:id', workShiftCtrl.getWorkShiftById);
 

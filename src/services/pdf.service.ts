@@ -5,7 +5,7 @@
  * Uses PDFKit to create professional-looking reports with tables and summaries.
  */
 
-import { ReportData, DailyReport, ShiftSummary } from './report.service';
+import { ReportData, DailyReport, ShiftSummary, RedemptionSummary } from './report.service';
 import axios from 'axios';
 
 // Import PDFKit using require (works better with TypeScript)
@@ -99,6 +99,9 @@ function generatePDFContent(
     if (reportData.branchSummary && reportData.branchSummary.length > 0) {
         addBranchSummary(doc, reportData.branchSummary);
     }
+
+    // Redemptions section
+    addRedemptionSection(doc, reportData.redemptionSummary);
 
     // Daily breakdown
     if (dailyData.length > 0) {
@@ -328,6 +331,78 @@ function addBranchSummary(
 
         doc.moveDown(1.2);
     }
+}
+
+/**
+ * Add redemptions section
+ */
+function addRedemptionSection(doc: PDFKit.PDFDocument, redemptionSummary: RedemptionSummary): void {
+    doc.addPage();
+
+    addSectionTitle(doc, 'CANJES DE RECOMPENSAS');
+
+    // Summary box
+    const boxX = 50;
+    const boxY = doc.y;
+    const boxWidth = doc.page.width - 100;
+    const boxHeight = 90;
+
+    doc.rect(boxX + 2, boxY + 2, boxWidth, boxHeight).fill('#00000010');
+    doc.rect(boxX, boxY, boxWidth, boxHeight)
+        .fill(COLORS.background)
+        .stroke(COLORS.border);
+
+    doc.y = boxY + 15;
+
+    const metrics = [
+        { label: 'Total Canjes', value: redemptionSummary.totalRedemptions.toLocaleString() },
+        { label: 'Puntos Canjeados', value: redemptionSummary.totalPointsRedeemed.toLocaleString() },
+        { label: 'Sellos Canjeados', value: redemptionSummary.totalStampsRedeemed.toLocaleString() },
+    ];
+
+    const colWidth = (boxWidth - 40) / 3;
+    const metricsY = doc.y;
+
+    metrics.forEach((metric, index) => {
+        const x = boxX + 20 + index * colWidth;
+
+        doc.fontSize(9)
+            .font('Helvetica')
+            .fillColor(COLORS.textLight)
+            .text(metric.label, x, metricsY);
+
+        doc.fontSize(18)
+            .font('Helvetica-Bold')
+            .fillColor(COLORS.accent)
+            .text(metric.value, x, metricsY + 12);
+    });
+
+    doc.y = boxY + boxHeight + 20;
+    doc.fillColor(COLORS.text);
+
+    if (redemptionSummary.redemptions.length === 0) {
+        doc.fontSize(10)
+            .font('Helvetica')
+            .fillColor(COLORS.textLight)
+            .text('No se realizaron canjes en el período seleccionado.', 50, doc.y);
+        doc.moveDown(1);
+        return;
+    }
+
+    drawProfessionalTable(doc, {
+        headers: ['Fecha/Hora', 'Cliente', 'Recompensa', 'Puntos', 'Sellos', 'Sucursal'],
+        rows: redemptionSummary.redemptions.map(r => [
+            `${r.date}\n${r.time}`,
+            r.clientName,
+            r.rewardName,
+            r.pointsRedeemed > 0 ? r.pointsRedeemed.toLocaleString() : '-',
+            r.stampsRedeemed > 0 ? r.stampsRedeemed.toLocaleString() : '-',
+            r.branchName,
+        ]),
+        columnWidths: [90, 105, 135, 55, 55, 120],
+    });
+
+    doc.moveDown(2);
 }
 
 /**

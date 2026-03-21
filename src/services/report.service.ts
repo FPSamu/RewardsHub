@@ -63,6 +63,32 @@ export interface SystemBreakdown {
 }
 
 /**
+ * Individual redemption event
+ */
+export interface RedemptionDetail {
+    id: string;
+    date: string;           // DD/MM/YYYY
+    time: string;           // HH:mm
+    clientName: string;
+    clientId: string;
+    rewardName: string;
+    pointsRedeemed: number; // absolute value
+    stampsRedeemed: number; // absolute value
+    branchName: string;
+    branchId: string | null;
+}
+
+/**
+ * Aggregated redemption data for the report period
+ */
+export interface RedemptionSummary {
+    totalRedemptions: number;
+    totalPointsRedeemed: number;
+    totalStampsRedeemed: number;
+    redemptions: RedemptionDetail[];
+}
+
+/**
  * Daily report data
  */
 export interface DailyReport {
@@ -128,6 +154,7 @@ export interface ReportData {
             stamps: number;
         }>;
     };
+    redemptionSummary: RedemptionSummary;
 }
 
 /**
@@ -231,6 +258,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
     const totalsByShift = calculateTotalsByShift(dailyData);
     const totalsBySystem = calculateTotalsBySystem(transactions);
     const branchSummary = buildBranchSummary(transactions, shiftsMap, branchNameById);
+    const redemptionSummary = buildRedemptionSummary(transactions, branchNameById);
 
     return {
         metadata: {
@@ -255,6 +283,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
             totalsByShift,
             totalsBySystem,
         },
+        redemptionSummary,
     };
 }
 
@@ -473,6 +502,63 @@ type BranchBucket = {
     totals: BranchTotals;
     shifts: Map<string, BranchShiftTotals>;
 };
+
+/**
+ * Build redemption summary from transactions of type 'redeem'
+ */
+function buildRedemptionSummary(
+    transactions: any[],
+    branchNameById: Map<string, string>
+): RedemptionSummary {
+    const redeemTransactions = transactions.filter(t => t.type === 'redeem');
+
+    let totalPointsRedeemed = 0;
+    let totalStampsRedeemed = 0;
+
+    const redemptions: RedemptionDetail[] = redeemTransactions.map(t => {
+        const pointsRedeemed = Math.abs(t.totalPointsChange || 0);
+        const stampsRedeemed = Math.abs(t.totalStampsChange || 0);
+        totalPointsRedeemed += pointsRedeemed;
+        totalStampsRedeemed += stampsRedeemed;
+
+        const branchKey = t.branchId?.toString();
+        const branchName = branchKey
+            ? (branchNameById.get(branchKey) || 'Sucursal')
+            : 'Sin sucursal';
+
+        const date = t.createdAt.toLocaleDateString('es-ES', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+        });
+
+        const time = t.createdAt.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+
+        return {
+            id: t._id.toString(),
+            date,
+            time,
+            clientName: t.userId?.username || t.userId?.email || 'Cliente',
+            clientId: t.userId?._id?.toString() || '',
+            rewardName: t.rewardName || 'Recompensa',
+            pointsRedeemed,
+            stampsRedeemed,
+            branchName,
+            branchId: branchKey || null,
+        };
+    });
+
+    return {
+        totalRedemptions: redeemTransactions.length,
+        totalPointsRedeemed,
+        totalStampsRedeemed,
+        redemptions,
+    };
+}
 
 function buildBranchSummary(
     transactions: any[],

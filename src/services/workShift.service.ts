@@ -4,6 +4,7 @@
  * This module handles CRUD operations for work shifts.
  */
 
+import { Types } from 'mongoose';
 import { WorkShiftModel, IWorkShift } from '../models/workShift.model';
 import { validateShiftTimes } from '../helpers/shiftCalculator';
 
@@ -13,6 +14,7 @@ import { validateShiftTimes } from '../helpers/shiftCalculator';
 export interface PublicWorkShift {
     id: string;
     businessId: string;
+    branchId?: string;
     name: string;
     startTime: string;
     endTime: string;
@@ -30,6 +32,7 @@ function toPublic(doc: IWorkShift): PublicWorkShift {
     return {
         id: doc._id.toString(),
         businessId: doc.businessId.toString(),
+        branchId: doc.branchId?.toString(),
         name: doc.name,
         startTime: doc.startTime,
         endTime: doc.endTime,
@@ -43,13 +46,14 @@ function toPublic(doc: IWorkShift): PublicWorkShift {
 
 /**
  * Create a new work shift
- * 
+ *
  * @param businessId - The business ID
  * @param name - Shift name
  * @param startTime - Start time in "HH:mm" format
  * @param endTime - End time in "HH:mm" format
  * @param color - Hex color for UI (optional)
  * @param description - Optional description
+ * @param branchId - Optional branch ID. If provided, the shift applies only to that branch.
  * @returns The created work shift
  */
 export async function createWorkShift(
@@ -58,12 +62,18 @@ export async function createWorkShift(
     startTime: string,
     endTime: string,
     color?: string,
-    description?: string
+    description?: string,
+    branchId?: string
 ): Promise<PublicWorkShift> {
-    // Get existing shifts for validation
-    const existingShifts = await WorkShiftModel.find({ businessId, isActive: true });
+    // Validate against other shifts in the same scope (branch or business-wide)
+    const scopeQuery: any = { businessId, isActive: true };
+    if (branchId) {
+        scopeQuery.branchId = branchId;
+    } else {
+        scopeQuery.branchId = null;
+    }
+    const existingShifts = await WorkShiftModel.find(scopeQuery);
 
-    // Validate shift times
     const validation = validateShiftTimes({ startTime, endTime }, existingShifts);
     if (!validation.isValid) {
         throw new Error(validation.error);
@@ -71,6 +81,7 @@ export async function createWorkShift(
 
     const shift = new WorkShiftModel({
         businessId,
+        branchId: branchId || null,
         name,
         startTime,
         endTime,
@@ -84,8 +95,8 @@ export async function createWorkShift(
 }
 
 /**
- * Get all work shifts for a business
- * 
+ * Get all work shifts for a business (all branches + business-wide)
+ *
  * @param businessId - The business ID
  * @param includeInactive - Whether to include inactive shifts (default: false)
  * @returns Array of work shifts
@@ -99,18 +110,50 @@ export async function getWorkShiftsByBusiness(
         query.isActive = true;
     }
 
+    const shifts = await WorkShiftModel.find(query).sort({ branchId: 1, startTime: 1 });
+    return shifts.map(toPublic);
+}
+
+/**
+ * Get work shifts for a specific branch
+ *
+ * @param businessId - The business ID
+ * @param branchId - The branch (location) ID
+ * @param includeInactive - Whether to include inactive shifts (default: false)
+ * @returns Array of work shifts for that branch
+ */
+export async function getWorkShiftsByBranch(
+    businessId: string,
+    branchId: string,
+    includeInactive: boolean = false
+): Promise<PublicWorkShift[]> {
+    const query: any = { businessId, branchId };
+    if (!includeInactive) {
+        query.isActive = true;
+    }
+
     const shifts = await WorkShiftModel.find(query).sort({ startTime: 1 });
     return shifts.map(toPublic);
 }
 
 /**
- * Get active work shifts for a business (for shift calculation)
- * 
+ * Get active work shifts for shift calculation.
+ * When a branchId is provided, returns branch-specific shifts first.
+ * Falls back to business-wide shifts if no branch shifts exist.
+ *
  * @param businessId - The business ID
+ * @param branchId - Optional branch ID to prefer branch-specific shifts
  * @returns Array of active work shifts (Mongoose documents)
  */
-export async function getActiveWorkShifts(businessId: string): Promise<IWorkShift[]> {
-    return await WorkShiftModel.find({ businessId, isActive: true }).sort({ startTime: 1 });
+export async function getActiveWorkShifts(businessId: string, branchId?: string): Promise<IWorkShift[]> {
+    if (branchId) {
+        const branchShifts = await WorkShiftModel.find({ businessId, branchId, isActive: true }).sort({ startTime: 1 });
+        if (branchShifts.length > 0) {
+            return branchShifts;
+        }
+    }
+    // Fall back to business-wide shifts (no branchId)
+    return await WorkShiftModel.find({ businessId, branchId: null, isActive: true }).sort({ startTime: 1 });
 }
 
 /**
@@ -140,6 +183,7 @@ export async function updateWorkShift(
         color?: string;
         description?: string;
         isActive?: boolean;
+        branchId?: string | null;
     }
 ): Promise<PublicWorkShift | undefined> {
     const shift = await WorkShiftModel.findById(shiftId);
@@ -147,14 +191,20 @@ export async function updateWorkShift(
         return undefined;
     }
 
-    // If updating times, validate them
-    if (updates.startTime || updates.endTime) {
+    // Determine the target scope after the update (branchId may be changing)
+    const targetBranchId = 'branchId' in updates
+        ? (updates.branchId || null)
+        : (shift.branchId ?? null);
+
+    // If updating times or moving to a different scope, revalidate
+    if (updates.startTime || updates.endTime || 'branchId' in updates) {
         const newStartTime = updates.startTime || shift.startTime;
         const newEndTime = updates.endTime || shift.endTime;
 
-        // Get other shifts for this business (excluding current shift)
+        // Get other shifts in the target scope, excluding the current shift
         const otherShifts = await WorkShiftModel.find({
             businessId: shift.businessId,
+            branchId: targetBranchId,
             _id: { $ne: shiftId },
             isActive: true,
         });
@@ -176,6 +226,7 @@ export async function updateWorkShift(
     if (updates.color !== undefined) shift.color = updates.color;
     if (updates.description !== undefined) shift.description = updates.description;
     if (updates.isActive !== undefined) shift.isActive = updates.isActive;
+    if ('branchId' in updates) shift.branchId = updates.branchId ? new Types.ObjectId(updates.branchId) : null as any;
 
     await shift.save();
     return toPublic(shift);
