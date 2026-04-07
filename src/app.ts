@@ -15,6 +15,7 @@ import subscriptionRoutes from './routes/subscription.routes';
 import webhookRoutes from './routes/webhook.routes';
 import deliveryRoutes from './routes/delivery.routes';
 import workShiftRoutes from './routes/workShift.routes';
+import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
@@ -90,5 +91,6 @@ app.use('/user-points', userPointsRoutes);
 app.use('/transactions', transactionRoutes);
 app.use('/subscription', subscriptionRoutes);
 app.use('/delivery', deliveryRoutes);
+app.use('/notifications', notificationRoutes);
 
 export default app;
