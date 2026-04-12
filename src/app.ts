@@ -16,6 +16,8 @@ import webhookRoutes from './routes/webhook.routes';
 import deliveryRoutes from './routes/delivery.routes';
 import workShiftRoutes from './routes/workShift.routes';
 import notificationRoutes from './routes/notification.routes';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const annaRouter = require('./anna/router');
 
 const app = express();
 
@@ -92,5 +94,6 @@ app.use('/transactions', transactionRoutes);
 app.use('/subscription', subscriptionRoutes);
 app.use('/delivery', deliveryRoutes);
 app.use('/notifications', notificationRoutes);
+app.use('/anna/api', annaRouter);
 
 export default app;
