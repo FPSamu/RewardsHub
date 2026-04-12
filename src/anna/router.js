@@ -39,6 +39,11 @@ router.post('/invites', async (req, res) => {
       return res.status(400).json({ error: 'Nombre y correo son requeridos' });
     }
 
+    const existing = await Invite.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ error: `El correo ${email} ya tiene una invitación registrada` });
+    }
+
     const code = uuidv4();
 
     const qrDataUrl = await QRCode.toDataURL(code, {
@@ -115,7 +120,7 @@ router.post('/invites', async (req, res) => {
                     </td>
                   </tr>
                   <tr>
-                    <td colspan="3" align="center" style="padding:24px 32px 28px 32px;">
+                    <td colspan="3" align="center" style="padding:24px 32px 16px 32px;">
                       <img src="cid:qrcode" width="220" height="220" alt="Código QR"
                            style="display:block;margin:0 auto;border:3px solid #1a1a2e;border-radius:6px;" />
                       <p style="margin:14px 0 0 0;font-family:Arial,sans-serif;font-size:12px;
@@ -124,6 +129,66 @@ router.post('/invites', async (req, res) => {
                       </p>
                     </td>
                   </tr>
+
+                  <!-- Separador recomendaciones -->
+                  <tr>
+                    <td colspan="3" style="padding:8px 40px 0 40px;">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td style="border-top:1px solid #f0ece4;font-size:0;line-height:0;">&nbsp;</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <!-- Recomendaciones -->
+                  <tr>
+                    <td colspan="3" style="padding:20px 40px 28px 40px;">
+                      <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;
+                                font-size:15px;font-weight:bold;color:#1a1a2e;text-align:center;">
+                        ¡Todo listo!
+                      </p>
+                      <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:13px;
+                                color:#555;text-align:center;line-height:1.5;">
+                        Te dejamos algunas recomendaciones para la clase:
+                      </p>
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td style="padding:5px 0;font-family:Arial,sans-serif;font-size:13px;
+                                     color:#444;line-height:1.6;">
+                            <span style="color:#e5510a;font-weight:bold;margin-right:6px;">•</span>
+                            Te sugerimos asistir con <strong>zapato cerrado</strong> por comodidad y seguridad 👩🏻‍🍳
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:5px 0;font-family:Arial,sans-serif;font-size:13px;
+                                     color:#444;line-height:1.6;">
+                            <span style="color:#e5510a;font-weight:bold;margin-right:6px;">•</span>
+                            Toma en cuenta que <strong>no contamos con estacionamiento</strong>, te recomendamos llegar con tiempo y considerar opciones cercanas
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:5px 0;font-family:Arial,sans-serif;font-size:13px;
+                                     color:#444;line-height:1.6;">
+                            <span style="color:#e5510a;font-weight:bold;margin-right:6px;">•</span>
+                            Ven con ropa cómoda (¡vamos a cocinar!)
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:5px 0;font-family:Arial,sans-serif;font-size:13px;
+                                     color:#444;line-height:1.6;">
+                            <span style="color:#e5510a;font-weight:bold;margin-right:6px;">•</span>
+                            Si tienes el cabello largo, te recomendamos llevarlo recogido
+                          </td>
+                        </tr>
+                      </table>
+                      <p style="margin:16px 0 0 0;font-family:Arial,sans-serif;font-size:13px;
+                                color:#888;text-align:center;line-height:1.5;">
+                        Cualquier duda estamos pendientes ✨
+                      </p>
+                    </td>
+                  </tr>
+
                   <tr>
                     <td width="22" height="22" style="background:#e5510a;font-size:0;line-height:0;">&nbsp;</td>
                     <td style="background:#ffffff;font-size:0;line-height:0;">&nbsp;</td>
