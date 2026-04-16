@@ -115,6 +115,18 @@ function readFileOrNull(filePath: string): Buffer | null {
     return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
 }
 
+/**
+ * Reads a certificate from a file path, falling back to an environment variable
+ * that contains the PEM content directly (useful for cloud deployments like Render
+ * where files can't be persisted).
+ */
+function readCertFromFileOrEnv(filePath: string, envVar: string): Buffer | null {
+    if (fs.existsSync(filePath)) return fs.readFileSync(filePath);
+    const envValue = process.env[envVar];
+    if (envValue) return Buffer.from(envValue.replace(/\\n/g, '\n'));
+    return null;
+}
+
 function readImageOrPlaceholder(imagesDir: string, name: string): Buffer {
     const p = path.join(imagesDir, name);
     return fs.existsSync(p) ? fs.readFileSync(p) : PLACEHOLDER_PNG;
@@ -133,14 +145,19 @@ export async function generateApplePassBuffer(userId: string): Promise<Buffer> {
         );
     }
 
-    // --- Read certificates ---
+    // --- Read certificates (file path first, env var fallback for cloud deployments) ---
     const certsDir = path.resolve(process.env.APPLE_CERTS_DIR || './certs/apple');
-    const wwdr = readFileOrNull(process.env.APPLE_WWDR_PATH || path.join(certsDir, 'wwdr.pem'));
-    const signerCert = readFileOrNull(
-        process.env.APPLE_SIGNER_CERT_PATH || path.join(certsDir, 'signerCert.pem')
+    const wwdr = readCertFromFileOrEnv(
+        process.env.APPLE_WWDR_PATH || path.join(certsDir, 'wwdr.pem'),
+        'APPLE_WWDR_PEM'
     );
-    const signerKey = readFileOrNull(
-        process.env.APPLE_SIGNER_KEY_PATH || path.join(certsDir, 'signerKey.pem')
+    const signerCert = readCertFromFileOrEnv(
+        process.env.APPLE_SIGNER_CERT_PATH || path.join(certsDir, 'signerCert.pem'),
+        'APPLE_SIGNER_CERT_PEM'
+    );
+    const signerKey = readCertFromFileOrEnv(
+        process.env.APPLE_SIGNER_KEY_PATH || path.join(certsDir, 'signerKey.pem'),
+        'APPLE_SIGNER_KEY_PEM'
     );
 
     if (!wwdr || !signerCert || !signerKey) {
