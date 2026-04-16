@@ -5,8 +5,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as https from 'https';
+import * as http from 'http';
 import { Types } from 'mongoose';
 import { PKPass } from 'passkit-generator';
+import sharp from 'sharp';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/user.model';
 import { UserPointsModel } from '../models/userPoints.model';
@@ -99,6 +102,102 @@ export async function getUserPassData(userId: string): Promise<UserPassData> {
 }
 
 // ---------------------------------------------------------------------------
+// Image helpers
+// ---------------------------------------------------------------------------
+
+function fetchBuffer(url: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        const client = url.startsWith('https') ? https : http;
+        client.get(url, (res) => {
+            if (res.statusCode !== 200) {
+                reject(new Error(`Failed to fetch image: HTTP ${res.statusCode}`));
+                return;
+            }
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk: Buffer) => chunks.push(chunk));
+            res.on('end', () => resolve(Buffer.concat(chunks)));
+            res.on('error', reject);
+        }).on('error', reject);
+    });
+}
+
+const LOGO_URL = 'https://rewards-hub-app.s3.us-east-2.amazonaws.com/app/RewardsHubPNG.png';
+
+// In-memory cache — generated once per process lifetime
+let _stripCache: Buffer | null = null;
+let _logoCache: Buffer | null = null;
+
+/** Call this to bust the strip cache (e.g. after config changes in dev) */
+export function clearPassImageCache() { _stripCache = null; _logoCache = null; }
+
+async function getLogoBuffer(): Promise<Buffer> {
+    if (_logoCache) return _logoCache;
+    _logoCache = await fetchBuffer(LOGO_URL);
+    return _logoCache;
+}
+
+/**
+ * Generates a 750×246 strip image:
+ *   – #FFB733 background
+ *   – RewardsHub logo centered (max 140 px tall)
+ *   – "rewardshub.cloud" text below
+ *
+ * The result is cached in memory so it's only generated once.
+ */
+async function generateStripImage(): Promise<Buffer> {
+    if (_stripCache) return _stripCache;
+
+    const stripW = 750;
+    const stripH = 246;
+
+    // Resize logo to fit within 220×140, preserving aspect ratio
+    const logoRaw = await getLogoBuffer();
+    const logoResized = await sharp(logoRaw)
+        .resize({ width: 220, height: 140, fit: 'inside', withoutEnlargement: false })
+        .toBuffer();
+
+    const logoMeta = await sharp(logoResized).metadata();
+    const logoW = logoMeta.width ?? 220;
+    const logoH = logoMeta.height ?? 140;
+
+    // Center logo horizontally; leave room for text below
+    const logoLeft = Math.round((stripW - logoW) / 2);
+    const logoTop = Math.round((stripH - logoH) / 2) - 22;
+
+    // SVG text layer: "rewardshub.cloud" centered
+    const textTop = logoTop + logoH + 14;
+    const textSvg = Buffer.from(
+        `<svg width="${stripW}" height="56" xmlns="http://www.w3.org/2000/svg">` +
+        `<text x="${stripW / 2}" y="44" ` +
+        `text-anchor="middle" ` +
+        `font-size="40" font-weight="bold" ` +
+        `font-family="Helvetica Neue,Helvetica,Arial,sans-serif" ` +
+        `fill="white">rewardshub.cloud</text>` +
+        `</svg>`
+    );
+
+    // Transparent background — the pass's backgroundColor (#FFB733) shows through,
+    // making all 3 sections (header, strip, barcode) the same uniform color.
+    // Only the logo and white text are opaque.
+    _stripCache = await sharp({
+        create: {
+            width: stripW,
+            height: stripH,
+            channels: 4,          // RGBA — alpha=0 means fully transparent
+            background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+    })
+        .composite([
+            { input: logoResized, top: logoTop, left: logoLeft },
+            { input: textSvg,    top: textTop,  left: 0 },
+        ])
+        .png()
+        .toBuffer();
+
+    return _stripCache;
+}
+
+// ---------------------------------------------------------------------------
 // Apple Wallet
 // ---------------------------------------------------------------------------
 
@@ -169,27 +268,8 @@ export async function generateApplePassBuffer(userId: string): Promise<Buffer> {
         );
     }
 
-    // --- Build dynamic pass content ---
+    // --- Build pass content ---
     const data = await getUserPassData(userId);
-    const { redeemableBusinesses } = data;
-
-    // Dynamic primary field based on redeemable reward state
-    let primaryFields: { key: string; label: string; value: string }[] = [];
-
-    if (redeemableBusinesses.length === 1) {
-        primaryFields = [{
-            key: 'status',
-            label: redeemableBusinesses[0].name.toUpperCase(),
-            value: 'Recompensas disponibles',
-        }];
-    } else if (redeemableBusinesses.length > 1) {
-        primaryFields = [{
-            key: 'status',
-            label: 'RECOMPENSAS',
-            value: 'Tienes recompensas disponibles, visita rewardshub.cloud para encontrarlas',
-        }];
-    }
-    // If 0 redeemable businesses: primaryFields stays empty — nothing is shown
 
     const passJson = {
         formatVersion: 1,
@@ -198,15 +278,16 @@ export async function generateApplePassBuffer(userId: string): Promise<Buffer> {
         serialNumber: userId,
         organizationName: 'RewardsHub',
         description: 'RewardsHub — Tarjeta de Lealtad',
-        foregroundColor: 'rgb(90, 55, 0)',
-        backgroundColor: 'rgb(255, 183, 51)',
-        labelColor: 'rgb(139, 90, 0)',
-        logoText: 'RewardsHub',
+        foregroundColor: 'rgb(90, 55, 0)',      // dark brown — readable on #FFB733
+        backgroundColor: 'rgb(255, 183, 51)',   // #FFB733
+        labelColor: 'rgb(139, 90, 0)',           // medium brown for labels
         storeCard: {
             headerFields: [
                 { key: 'member_name', label: 'MIEMBRO', value: data.name },
             ],
-            primaryFields,
+            primaryFields: [
+                { key: 'spacer', label: '', value: '' },
+            ],
             backFields: [
                 {
                     key: 'info',
@@ -232,15 +313,27 @@ export async function generateApplePassBuffer(userId: string): Promise<Buffer> {
         ],
     };
 
-    // --- Load brand images (fallback to placeholder if not present) ---
-    const imagesDir = path.resolve(process.env.PASS_IMAGES_DIR || './assets/pass-images');
+    // --- Generate images ---
+    const logoBuffer = await getLogoBuffer().catch(() => PLACEHOLDER_PNG);
+    // strip.png has a transparent background so Apple's backgroundColor (#FFB733) shows
+    // uniformly across all 3 sections — no color bands. Only logo + white text are visible.
+    const stripBuffer = await generateStripImage().catch(() => PLACEHOLDER_PNG);
+
+    // Transparent 1×1 PNG for logo.png — avoids duplicating the logo in the header corner
+    // since the strip already shows it centered.
+    const transparentPng = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+        'base64'
+    );
 
     const pass = new PKPass({
-        'pass.json': Buffer.from(JSON.stringify(passJson)),
-        'icon.png': readImageOrPlaceholder(imagesDir, 'icon.png'),
-        'icon@2x.png': readImageOrPlaceholder(imagesDir, 'icon@2x.png'),
-        'logo.png': readImageOrPlaceholder(imagesDir, 'logo.png'),
-        'logo@2x.png': readImageOrPlaceholder(imagesDir, 'logo@2x.png'),
+        'pass.json':    Buffer.from(JSON.stringify(passJson)),
+        'icon.png':     logoBuffer,
+        'icon@2x.png':  logoBuffer,
+        'logo.png':     transparentPng,
+        'logo@2x.png':  transparentPng,
+        'strip.png':    stripBuffer,
+        'strip@2x.png': stripBuffer,
     });
 
     const certPassword = process.env.APPLE_CERT_PASSWORD;
