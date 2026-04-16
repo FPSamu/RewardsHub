@@ -362,19 +362,6 @@ interface ServiceAccount {
  * Redirect the user to `https://pay.google.com/gp/v/save/{token}`.
  */
 export function generateGooglePassJwt(data: UserPassData): string {
-    const saPath = path.resolve(
-        process.env.GOOGLE_SERVICE_ACCOUNT || './certs/google/service-account.json'
-    );
-
-    if (!fs.existsSync(saPath)) {
-        throw Object.assign(
-            new Error(
-                'Google Wallet service account not configured. Place service-account.json in ./certs/google/ or set GOOGLE_SERVICE_ACCOUNT env var.'
-            ),
-            { status: 503 }
-        );
-    }
-
     const issuerId = process.env.GOOGLE_ISSUER_ID;
     if (!issuerId) {
         throw Object.assign(
@@ -383,8 +370,25 @@ export function generateGooglePassJwt(data: UserPassData): string {
         );
     }
 
+    // Read service account: file path first, then GOOGLE_SERVICE_ACCOUNT_JSON env var (for Render)
+    let sa: ServiceAccount;
+    const saPath = path.resolve(
+        process.env.GOOGLE_SERVICE_ACCOUNT || './certs/google/service-account.json'
+    );
+    if (fs.existsSync(saPath)) {
+        sa = JSON.parse(fs.readFileSync(saPath, 'utf-8'));
+    } else if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+        sa = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    } else {
+        throw Object.assign(
+            new Error(
+                'Google Wallet service account not configured. Place service-account.json in ./certs/google/ or set GOOGLE_SERVICE_ACCOUNT_JSON env var.'
+            ),
+            { status: 503 }
+        );
+    }
+
     const classSuffix = process.env.GOOGLE_CLASS_ID || 'rewardshub_loyalty_card';
-    const sa: ServiceAccount = JSON.parse(fs.readFileSync(saPath, 'utf-8'));
 
     const classId = `${issuerId}.${classSuffix}`;
     const objectId = `${issuerId}.user_${data.id}`;
