@@ -6,25 +6,22 @@
 import express from 'express';
 import * as systemController from '../controllers/system.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
+import { requireAdminPin } from '../middleware/adminPin.middleware';
 
 const router = express.Router();
 
 // All routes require business authentication
 router.use(authenticateBusiness);
 
-// Create systems
-router.post('/points', systemController.createPointsSystem);
-router.post('/stamps', systemController.createStampsSystem);
-
-// Get systems
+// Read-only: no PIN required
 router.get('/', systemController.getSystemsForBusiness);
 router.get('/:systemId', systemController.getSystemById);
 
-// Update systems
-router.put('/points/:systemId', systemController.updatePointsSystem);
-router.put('/stamps/:systemId', systemController.updateStampsSystem);
-
-// Delete system
-router.delete('/:systemId', systemController.deleteSystem);
+// Write operations: require admin PIN
+router.post('/points', requireAdminPin, systemController.createPointsSystem);
+router.post('/stamps', requireAdminPin, systemController.createStampsSystem);
+router.put('/points/:systemId', requireAdminPin, systemController.updatePointsSystem);
+router.put('/stamps/:systemId', requireAdminPin, systemController.updateStampsSystem);
+router.delete('/:systemId', requireAdminPin, systemController.deleteSystem);
 
 export default router;

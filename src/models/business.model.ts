@@ -32,6 +32,8 @@ export interface IBusiness extends Document {
     verificationToken?: string;
     resetPasswordToken?: string;
     resetPasswordExpires?: Date;
+    adminPinHash?: string;        // bcrypt hash of the admin PIN
+    isAdminPinTemporary?: boolean; // true until the business changes it
 }
 
 const locationSchema = new Schema<ILocation>(
@@ -60,7 +62,9 @@ const businessSchema = new Schema<IBusiness>(
         isVerified: { type: Boolean, default: false },
         verificationToken: { type: String },
         resetPasswordToken: { type: String },
-        resetPasswordExpires: { type: Date }
+        resetPasswordExpires: { type: Date },
+        adminPinHash: { type: String },
+        isAdminPinTemporary: { type: Boolean, default: false },
     },
     { timestamps: false }
 );

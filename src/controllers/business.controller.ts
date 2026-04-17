@@ -46,6 +46,21 @@ export const register = async (req: Request, res: Response) => {
         console.error('❌ [BUSINESS REGISTER] Failed to send email:', error);
     }
 
+    // Generate and email a temporary admin PIN
+    try {
+        const bcryptMod = await import('bcryptjs');
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        const tempPin = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        const pinHash = await bcryptMod.hash(tempPin, 10);
+        await (await import('../models/business.model')).BusinessModel.findByIdAndUpdate(biz.id, {
+            adminPinHash: pinHash,
+            isAdminPinTemporary: true,
+        });
+        await emailService.sendAdminPinEmail(biz.email, biz.name, tempPin);
+    } catch (error) {
+        console.error('❌ [BUSINESS REGISTER] Failed to generate admin PIN:', error);
+    }
+
     const accessToken = (jwt as any).sign({ sub: biz.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = (jwt as any).sign({ sub: biz.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
     await businessService.addRefreshToken(biz.id, refreshToken);

@@ -2,6 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as businessCtrl from '../controllers/business.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
+import { requireAdminPin } from '../middleware/adminPin.middleware';
+import adminPinRoutes from './adminPin.routes';
 import workShiftRoutes from './workShift.routes';
 import reportRoutes from './report.routes';
 
@@ -16,9 +18,9 @@ const upload = multer({
 router.post('/register', businessCtrl.register);
 router.post('/login', businessCtrl.login);
 router.get('/me', authenticateBusiness, businessCtrl.me);
-router.put('/me', authenticateBusiness, businessCtrl.updateBusiness);
-router.delete('/me', authenticateBusiness, businessCtrl.deleteAccount);
-router.post('/logo', authenticateBusiness, upload.single('logo'), businessCtrl.uploadLogo);
+router.put('/me', authenticateBusiness, requireAdminPin, businessCtrl.updateBusiness);
+router.delete('/me', authenticateBusiness, requireAdminPin, businessCtrl.deleteAccount);
+router.post('/logo', authenticateBusiness, requireAdminPin, upload.single('logo'), businessCtrl.uploadLogo);
 router.post('/refresh', businessCtrl.refresh);
 router.post('/logout', businessCtrl.logout);
 
@@ -38,6 +40,7 @@ router.get('/all', businessCtrl.getAllBusinesses);
 router.post('/locations', authenticateBusiness, businessCtrl.addLocation);
 router.delete('/locations/:locationId', authenticateBusiness, businessCtrl.removeLocation);
 
+router.use('/admin-pin', adminPinRoutes);
 router.use('/work-shifts', workShiftRoutes);
 router.use('/reports', reportRoutes);
 
