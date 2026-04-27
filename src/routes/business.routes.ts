@@ -15,14 +15,10 @@ const upload = multer({
     },
 });
 
-router.post('/register', businessCtrl.register);
-router.post('/login', businessCtrl.login);
 router.get('/me', authenticateBusiness, businessCtrl.me);
 router.put('/me', authenticateBusiness, requireAdminPin, businessCtrl.updateBusiness);
 router.delete('/me', authenticateBusiness, requireAdminPin, businessCtrl.deleteAccount);
 router.post('/logo', authenticateBusiness, requireAdminPin, upload.single('logo'), businessCtrl.uploadLogo);
-router.post('/refresh', businessCtrl.refresh);
-router.post('/logout', businessCtrl.logout);
 
 // Email verification and password reset
 router.get('/verify-email', businessCtrl.verifyEmail);

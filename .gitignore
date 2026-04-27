@@ -8,3 +8,4 @@ coverage/
 # Wallet certificates & credentials (never commit)
 certs/apple/*.pem
 certs/google/service-account.json
+logs/

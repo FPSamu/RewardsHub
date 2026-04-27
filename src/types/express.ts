@@ -6,7 +6,7 @@ import { ILocation } from '../models/business.model';
  */
 export interface Business {
   id: string;
-  name: string;
+  username: string;
   email: string;
   passHash: string;
   status: 'active' | 'inactive';

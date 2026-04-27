@@ -20,6 +20,7 @@ const upload = multer({
     },
 });
 
+router.post('/check-email', authCtrl.checkEmail);
 router.post('/register', authCtrl.register);
 router.post('/login', authCtrl.login);
 router.get('/me', authenticate, authCtrl.me);

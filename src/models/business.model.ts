@@ -18,7 +18,7 @@ export interface ILocation {
 
 export interface IBusiness extends Document {
     _id: any;
-    name: string;
+    username: string;
     email: string;
     passHash: string;
     status: 'active' | 'inactive';
@@ -34,6 +34,7 @@ export interface IBusiness extends Document {
     resetPasswordExpires?: Date;
     adminPinHash?: string;        // bcrypt hash of the admin PIN
     isAdminPinTemporary?: boolean; // true until the business changes it
+    googleUid?: string;
 }
 
 const locationSchema = new Schema<ILocation>(
@@ -49,7 +50,7 @@ const locationSchema = new Schema<ILocation>(
 
 const businessSchema = new Schema<IBusiness>(
     {
-        name: { type: String, required: true },
+        username: { type: String, required: true },
         email: { type: String, required: true, unique: true, index: true },
         passHash: { type: String, required: true },
         status: { type: String, enum: ['active', 'inactive'], default: 'inactive' },
@@ -65,6 +66,7 @@ const businessSchema = new Schema<IBusiness>(
         resetPasswordExpires: { type: Date },
         adminPinHash: { type: String },
         isAdminPinTemporary: { type: Boolean, default: false },
+        googleUid: { type: String },
     },
     { timestamps: false }
 );

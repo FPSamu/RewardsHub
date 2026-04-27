@@ -1,168 +1,193 @@
-/**
- * Authentication controllers
- *
- * Exposes register, login and me endpoints. These controllers are thin and
- * delegate persistence to the user service. They issue JWTs on successful
- * authentication.
- */
 import { Request, Response } from 'express';
 import * as userService from '../services/user.service';
-import jwt from 'jsonwebtoken';
+import * as businessService from '../services/business.service';
+import * as authService from '../services/auth.service';
+import * as firebaseService from '../services/firebase.service';
+import { UserModel } from '../models/user.model';
+import { BusinessModel } from '../models/business.model';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
-const ACCESS_EXPIRES = process.env.ACCESS_EXPIRES || '15m';
-const REFRESH_EXPIRES = process.env.REFRESH_EXPIRES || '7d';
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+//
+// Flujo:
+//   1. Frontend autentica con Firebase (email/password o Google) → obtiene idToken
+//   2. Envía idToken al backend
+//   3. Backend verifica el token → extrae email
+//   4. Busca el email en MongoDB (users → businesses)
+//   5. Devuelve JWT propio + rol + datos
 
-/**
- * Register a new user.
- * Expects { username, email, password } in the request body.
- * On success returns 201 with a token and the newly created user (without passHash).
- */
-export const register = async (req: Request, res: Response) => {
-    const { username, email, password } = req.body as { username: string, email: string, password: string };
-    if (!username || !email || !password) {
-        return res.status(400).json({ message: 'username, email and password are required' });
-    }
-
-    console.log('🔵 [REGISTER] Iniciando registro:', {
-        email,
-        timestamp: new Date().toISOString()
-    });
-
-    const existing = await userService.findUserByEmail(email);
-    if (existing) return res.status(409).json({ message: 'email already used' });
-
-    const user = await userService.createUser(username, email, password);
-
-    console.log('🟡 [REGISTER] Usuario creado, generando token:', {
-        userId: user.id,
-        email: user.email,
-        isVerified: user.isVerified,
-        timestamp: new Date().toISOString()
-    });
-
-    // Send verification email
-    const verificationToken = await userService.generateVerificationToken(user.id);
-
-    console.log('🟡 [REGISTER] Token generado, enviando email:', {
-        userId: user.id,
-        email: user.email,
-        timestamp: new Date().toISOString()
-    });
-
-    try {
-        const emailService = await import('../services/email.service');
-        await emailService.sendVerificationEmail(email, verificationToken, false);
-        console.log('🟢 [REGISTER] Email enviado exitosamente:', {
-            email,
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        console.error('❌ [REGISTER] Failed to send verification email:', error);
-    }
-
-    const accessToken = (jwt as any).sign({ sub: user.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
-    const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
-    // store refresh token
-    await userService.addRefreshToken(user.id, refreshToken);
-
-    console.log('🟢 [REGISTER] Registro completado:', {
-        userId: user.id,
-        email: user.email,
-        isVerified: user.isVerified,
-        timestamp: new Date().toISOString()
-    });
-
-    return res.status(201).json({
-        user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            profilePicture: user.profilePicture,
-            isVerified: user.isVerified,
-            createdAt: user.createdAt
-        },
-        token: accessToken, refreshToken
-    });
-};
-
-/**
- * Authenticate a user using email/password and return a JWT.
- * Expects { email, password } in the request body.
- */
 export const login = async (req: Request, res: Response) => {
-    const { email, password } = req.body as { email: string; password: string };
-    if (!email || !password) return res.status(400).json({ message: 'email and password required' });
+    const { idToken } = req.body as { idToken: string };
+    if (!idToken) return res.status(400).json({ message: 'idToken required' });
 
+    let firebasePayload: firebaseService.FirebaseTokenPayload;
+    try {
+        firebasePayload = await firebaseService.verifyIdToken(idToken);
+    } catch {
+        return res.status(401).json({ message: 'invalid Firebase token' });
+    }
+
+    const { email } = firebasePayload;
+
+    // Buscar en users
     const user = await userService.findUserByEmail(email);
-    if (!user) return res.status(401).json({ message: 'invalid credentials' });
+    if (user) {
+        const { accessToken, refreshToken } = authService.issueTokenPair(user.id, 'user');
+        await authService.addRefreshToken(UserModel, user.id, refreshToken);
+        return res.json({
+            role: 'user',
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                profilePicture: user.profilePicture,
+                isVerified: user.isVerified,
+                createdAt: user.createdAt,
+            },
+            token: accessToken,
+            refreshToken,
+        });
+    }
 
-    const ok = await userService.verifyPassword(password, user.passHash);
-    if (!ok) return res.status(401).json({ message: 'invalid credentials' });
+    // Buscar en businesses
+    const biz = await businessService.findBusinessByEmail(email);
+    if (biz) {
+        const { accessToken, refreshToken } = authService.issueTokenPair(biz.id, 'business');
+        await authService.addRefreshToken(BusinessModel, biz.id, refreshToken);
+        return res.json({
+            role: 'business',
+            user: {
+                id: biz.id,
+                username: biz.username,
+                email: biz.email,
+                isVerified: biz.isVerified,
+                createdAt: biz.createdAt,
+            },
+            token: accessToken,
+            refreshToken,
+        });
+    }
 
-    const accessToken = (jwt as any).sign({ sub: user.id }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
-    const refreshToken = (jwt as any).sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
-    await userService.addRefreshToken(user.id, refreshToken);
-    return res.json({
-        user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            profilePicture: user.profilePicture,
-            isVerified: user.isVerified,
-            createdAt: user.createdAt
-        },
-        token: accessToken, refreshToken
+    // Firebase tiene la cuenta pero MongoDB no → inconsistencia
+    return res.status(409).json({
+        code: 'ACCOUNT_INCONSISTENCY',
+        message: 'Firebase account exists but no MongoDB record found',
     });
 };
 
-/**
- * Exchange a refresh token for a new access token (and rotate refresh token).
- * Expects { refreshToken } in body.
- */
-export const refresh = async (req: Request, res: Response) => {
-    const { refreshToken } = req.body as { refreshToken?: string };
-    if (!refreshToken) return res.status(400).json({ message: 'refreshToken required' });
-    try {
-        const payload = jwt.verify(refreshToken, REFRESH_SECRET) as any;
-        const userId = payload.sub as string;
-        const ok = await userService.hasRefreshToken(userId, refreshToken);
-        if (!ok) return res.status(401).json({ message: 'invalid refresh token' });
+// ── CHECK EMAIL ───────────────────────────────────────────────────────────────
+//
+// Usado por el frontend antes de mostrar el formulario de login o registro.
+// Devuelve si el email ya tiene cuenta y en qué rol.
 
-        // rotate: remove old, create new
-        await userService.removeRefreshToken(userId, refreshToken);
-        const newAccess = (jwt as any).sign({ sub: userId }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
-        const newRefresh = (jwt as any).sign({ sub: userId }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
-        await userService.addRefreshToken(userId, newRefresh);
-        return res.json({ token: newAccess, refreshToken: newRefresh });
+export const checkEmail = async (req: Request, res: Response) => {
+    const { email } = req.body as { email: string };
+    if (!email) return res.status(400).json({ message: 'email required' });
+
+    const existsInFirebase = await firebaseService.checkEmailExists(email);
+
+    if (!existsInFirebase) {
+        return res.json({ exists: false });
+    }
+
+    // Determinar rol en MongoDB
+    const user = await userService.findUserByEmail(email);
+    if (user) return res.json({ exists: true, role: 'user' });
+
+    const biz = await businessService.findBusinessByEmail(email);
+    if (biz) return res.json({ exists: true, role: 'business' });
+
+    // Existe en Firebase pero no en MongoDB
+    return res.status(409).json({
+        code: 'ACCOUNT_INCONSISTENCY',
+        message: 'Firebase account exists but no MongoDB record found',
+    });
+};
+
+// ── REGISTRO ──────────────────────────────────────────────────────────────────
+//
+// Flujo:
+//   1. Frontend verifica con el backend que el email no existe en Firebase
+//   2. Frontend crea la cuenta en Firebase (email/password o Google)
+//   3. Envía idToken + role al backend
+//   4. Backend verifica el token, crea el registro en MongoDB, devuelve JWT
+
+export const register = async (req: Request, res: Response) => {
+    const { idToken, role, username } = req.body as {
+        idToken: string;
+        role: 'user' | 'business';
+        username?: string;
+    };
+
+    if (!idToken) return res.status(400).json({ message: 'idToken required' });
+    if (role !== 'user' && role !== 'business') {
+        return res.status(400).json({ message: 'role must be user or business' });
+    }
+
+    let firebasePayload: firebaseService.FirebaseTokenPayload;
+    try {
+        firebasePayload = await firebaseService.verifyIdToken(idToken);
+    } catch {
+        return res.status(401).json({ message: 'invalid Firebase token' });
+    }
+
+    const { uid, email, name } = firebasePayload;
+    const displayName = username || name;
+
+    // Verificar que no exista ya en MongoDB (Firebase es la fuente de verdad de existencia,
+    // pero prevenimos duplicados en nuestra DB antes de intentar el insert)
+    const [existingUser, existingBiz] = await Promise.all([
+        userService.findUserByEmail(email),
+        businessService.findBusinessByEmail(email),
+    ]);
+    if (existingUser || existingBiz) {
+        return res.status(409).json({ code: 'EMAIL_TAKEN', message: 'Account already exists, please sign in' });
+    }
+
+    try {
+        if (role === 'user') {
+            const user = await userService.createUser(displayName, email, undefined, uid);
+            const { accessToken, refreshToken } = authService.issueTokenPair(user.id, 'user');
+            await authService.addRefreshToken(UserModel, user.id, refreshToken);
+            return res.status(201).json({
+                role: 'user',
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    isVerified: user.isVerified,
+                    createdAt: user.createdAt,
+                },
+                token: accessToken,
+                refreshToken,
+            });
+        }
+
+        // role === 'business'
+        const biz = await businessService.createBusiness(displayName, email, undefined, uid);
+        const { accessToken, refreshToken } = authService.issueTokenPair(biz.id, 'business');
+        await authService.addRefreshToken(BusinessModel, biz.id, refreshToken);
+        return res.status(201).json({
+            role: 'business',
+            user: {
+                id: biz.id,
+                username: biz.username,
+                email: biz.email,
+                isVerified: biz.isVerified,
+                createdAt: biz.createdAt,
+            },
+            token: accessToken,
+            refreshToken,
+        });
     } catch (err) {
-        return res.status(401).json({ message: 'invalid refresh token' });
+        // Si MongoDB falla después de que Firebase ya creó la cuenta, la revertimos
+        await firebaseService.deleteUser(uid);
+        console.error('[register] MongoDB failed, Firebase user deleted:', uid, err);
+        return res.status(500).json({ message: 'Registration failed, please try again' });
     }
 };
 
-/**
- * Logout by revoking a refresh token.
- * Expects { refreshToken } in body.
- */
-export const logout = async (req: Request, res: Response) => {
-    const { refreshToken } = req.body as { refreshToken?: string };
-    if (!refreshToken) return res.status(400).json({ message: 'refreshToken required' });
-    try {
-        const payload = jwt.verify(refreshToken, REFRESH_SECRET) as any;
-        const userId = payload.sub as string;
-        await userService.removeRefreshToken(userId, refreshToken);
-        return res.json({ ok: true });
-    } catch (err) {
-        // token invalid -> still respond success to avoid token fishing
-        return res.json({ ok: true });
-    }
-};
+// ── ME / UPDATE / UPLOAD ──────────────────────────────────────────────────────
 
-/**
- * Return the current authenticated user.
- * The `authenticate` middleware injects `req.user` (public user object).
- */
 export const me = (req: Request, res: Response) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'not authenticated' });
@@ -172,62 +197,31 @@ export const me = (req: Request, res: Response) => {
         email: user.email,
         profilePicture: user.profilePicture,
         createdAt: user.createdAt,
-        isVerified: user.isVerified
+        isVerified: user.isVerified,
     });
 };
 
-/**
- * Get user information by ID.
- * Public endpoint for viewing user profiles.
- */
 export const getUserById = async (req: Request, res: Response) => {
     const { id } = req.params;
-
-    if (!id) {
-        return res.status(400).json({ message: 'user id is required' });
-    }
-
+    if (!id) return res.status(400).json({ message: 'user id is required' });
     try {
         const user = await userService.findUserById(id);
-
-        if (!user) {
-            return res.status(404).json({ message: 'user not found' });
-        }
-
-        // Return only public information (no passHash)
-        return res.json({
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            profilePicture: user.profilePicture,
-            createdAt: user.createdAt
-        });
-    } catch (error) {
+        if (!user) return res.status(404).json({ message: 'user not found' });
+        return res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture, createdAt: user.createdAt });
+    } catch {
         return res.status(500).json({ message: 'failed to get user information' });
     }
 };
 
-/**
- * Update current authenticated user information.
- * Expects { username?, email?, password? } in body.
- * PUT /api/auth/me
- */
 export const updateMe = async (req: Request, res: Response) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'not authenticated' });
 
-    const { username, email, password } = req.body as {
-        username?: string;
-        email?: string;
-        password?: string;
-    };
-
-    // Validate that at least one field is provided
+    const { username, email, password } = req.body as { username?: string; email?: string; password?: string };
     if (!username && !email && !password) {
         return res.status(400).json({ message: 'at least one field (username, email, password) is required' });
     }
 
-    // Check if email is already taken by another user
     if (email) {
         const existing = await userService.findUserByEmail(email);
         if (existing && existing.id !== user.id) {
@@ -236,52 +230,26 @@ export const updateMe = async (req: Request, res: Response) => {
     }
 
     try {
-        const updatedUser = await userService.updateUser(user.id, { username, email, password });
-        return res.json({
-            id: updatedUser.id,
-            username: updatedUser.username,
-            email: updatedUser.email,
-            profilePicture: updatedUser.profilePicture,
-            createdAt: updatedUser.createdAt
-        });
-    } catch (error) {
+        const updated = await userService.updateUser(user.id, { username, email, password });
+        return res.json({ id: updated.id, username: updated.username, email: updated.email, profilePicture: updated.profilePicture, createdAt: updated.createdAt });
+    } catch {
         return res.status(500).json({ message: 'failed to update user' });
     }
 };
 
-/**
- * Upload user profile picture
- * POST /api/auth/profile-picture
- * Expects multipart/form-data with field 'profilePicture'
- */
 export const uploadProfilePicture = async (req: Request, res: Response) => {
     const user = req.user;
     if (!user) return res.status(401).json({ message: 'not authenticated' });
-
-    if (!req.file) {
-        return res.status(400).json({ message: 'no file uploaded' });
-    }
+    if (!req.file) return res.status(400).json({ message: 'no file uploaded' });
 
     try {
-        // Dynamic import to avoid circular dependency
         const uploadService = await import('../services/upload.service');
-
-        // Upload to S3
         const profilePictureUrl = await uploadService.uploadFile(req.file, 'profile-pictures');
-
-        // Update user record
-        const updatedUser = await userService.updateUserProfilePicture(user.id, profilePictureUrl);
-
+        const updated = await userService.updateUserProfilePicture(user.id, profilePictureUrl);
         return res.json({
             message: 'Profile picture uploaded successfully',
             profilePicture: profilePictureUrl,
-            user: {
-                id: updatedUser.id,
-                username: updatedUser.username,
-                email: updatedUser.email,
-                profilePicture: updatedUser.profilePicture,
-                createdAt: updatedUser.createdAt
-            },
+            user: { id: updated.id, username: updated.username, email: updated.email, profilePicture: updated.profilePicture, createdAt: updated.createdAt },
         });
     } catch (error: any) {
         console.error('Upload error:', error);
@@ -289,10 +257,8 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
     }
 };
 
-/**
- * Verify user email
- * GET /api/auth/verify-email?token=xxx
- */
+// ── EMAIL VERIFICATION ────────────────────────────────────────────────────────
+
 export const verifyEmail = async (req: Request, res: Response) => {
     const { token } = req.query;
     if (!token) return res.status(400).json({ message: 'Token required' });
@@ -307,27 +273,21 @@ export const resendVerification = async (req: Request, res: Response) => {
     const user = (req as any).user;
     if (user.isVerified) return res.status(400).json({ message: 'Already verified' });
 
-    const token = await userService.generateVerificationToken(user.id);
-
+    const token = await authService.generateVerificationToken(UserModel, user.id);
     try {
         const emailService = await import('../services/email.service');
-        await emailService.sendVerificationEmail(user.email, token, false); // false = user account
+        await emailService.sendVerificationEmail(user.email, token, false);
         return res.json({ message: 'Verification email sent' });
-    } catch (error) {
+    } catch {
         return res.status(500).json({ message: 'Failed to send email' });
     }
 };
 
-/**
- * Request password reset
- * POST /api/auth/forgot-password
- * Expects { email } in body
- */
 export const forgotPassword = async (req: Request, res: Response) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email required' });
 
-    const token = await userService.generatePasswordResetToken(email);
+    const token = await authService.generatePasswordResetToken(UserModel, email);
     if (token) {
         try {
             const emailService = await import('../services/email.service');
@@ -337,21 +297,51 @@ export const forgotPassword = async (req: Request, res: Response) => {
             return res.status(500).json({ message: 'Failed to send email' });
         }
     }
-    // Always return success to prevent email enumeration
     return res.json({ message: 'If an account exists, a reset email has been sent' });
 };
 
-/**
- * Reset password with token
- * POST /api/auth/reset-password
- * Expects { token, password } in body
- */
 export const resetPassword = async (req: Request, res: Response) => {
     const { token, password } = req.body;
     if (!token || !password) return res.status(400).json({ message: 'Token and password required' });
 
-    const user = await userService.resetPassword(token, password);
-    if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
+    const ok = await authService.resetPassword(UserModel, token, password);
+    if (!ok) return res.status(400).json({ message: 'Invalid or expired token' });
 
     return res.json({ message: 'Password reset successfully' });
+};
+
+// ── REFRESH / LOGOUT ──────────────────────────────────────────────────────────
+// Unificados: el role dentro del JWT determina qué colección usar.
+
+export const refresh = async (req: Request, res: Response) => {
+    const { refreshToken } = req.body as { refreshToken?: string };
+    if (!refreshToken) return res.status(400).json({ message: 'refreshToken required' });
+    try {
+        const payload = authService.verifyRefreshToken(refreshToken);
+        const model = payload.role === 'business' ? BusinessModel : UserModel;
+
+        const ok = await authService.hasRefreshToken(model, payload.sub, refreshToken);
+        if (!ok) return res.status(401).json({ message: 'invalid refresh token' });
+
+        await authService.removeRefreshToken(model, payload.sub, refreshToken);
+        const tokens = authService.issueTokenPair(payload.sub, payload.role);
+        await authService.addRefreshToken(model, payload.sub, tokens.refreshToken);
+
+        return res.json({ token: tokens.accessToken, refreshToken: tokens.refreshToken });
+    } catch {
+        return res.status(401).json({ message: 'invalid refresh token' });
+    }
+};
+
+export const logout = async (req: Request, res: Response) => {
+    const { refreshToken } = req.body as { refreshToken?: string };
+    if (!refreshToken) return res.status(400).json({ message: 'refreshToken required' });
+    try {
+        const payload = authService.verifyRefreshToken(refreshToken);
+        const model = payload.role === 'business' ? BusinessModel : UserModel;
+        await authService.removeRefreshToken(model, payload.sub, refreshToken);
+    } catch {
+        // token inválido → responder éxito de todas formas
+    }
+    return res.json({ ok: true });
 };

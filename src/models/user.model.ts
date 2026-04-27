@@ -13,6 +13,7 @@ export interface IUser extends Document {
     verificationToken?: string;
     resetPasswordToken?: string;
     resetPasswordExpires?: Date;
+    googleUid?: string;
 }
 
 const userSchema = new Schema<IUser>(
@@ -27,6 +28,7 @@ const userSchema = new Schema<IUser>(
         verificationToken: { type: String },
         resetPasswordToken: { type: String },
         resetPasswordExpires: { type: Date },
+        googleUid: { type: String },
     },
     { timestamps: false }
 );

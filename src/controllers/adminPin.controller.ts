@@ -53,9 +53,9 @@ export const generatePin = async (req: Request, res: Response): Promise<void> =>
     business.isAdminPinTemporary = true;
     await business.save();
 
-    await sendAdminPinEmail(business.email, business.name, tempPin);
+    await sendAdminPinEmail(business.email, business.username, tempPin);
 
-    console.log(`🔑 [AdminPin] Temp PIN generated for business: ${business.name} (${business.email})`);
+    console.log(`🔑 [AdminPin] Temp PIN generated for business: ${business.username} (${business.email})`);
     res.json({ message: `PIN temporal generado y enviado a ${business.email}` });
 };
 
@@ -141,7 +141,7 @@ export const changePin = async (req: Request, res: Response): Promise<void> => {
     doc.isAdminPinTemporary = false;
     await doc.save();
 
-    console.log(`🔑 [AdminPin] PIN changed for business: ${doc.name}`);
+    console.log(`🔑 [AdminPin] PIN changed for business: ${doc.username}`);
     res.json({ message: 'PIN actualizado correctamente' });
 };
 
@@ -181,8 +181,8 @@ export const resetPin = async (req: Request, res: Response): Promise<void> => {
     doc.isAdminPinTemporary = true;
     await doc.save();
 
-    await sendAdminPinEmail(doc.email, doc.name, tempPin);
+    await sendAdminPinEmail(doc.email, doc.username, tempPin);
 
-    console.log(`🔑 [AdminPin] PIN reset for business: ${doc.name} (${doc.email})`);
+    console.log(`🔑 [AdminPin] PIN reset for business: ${doc.username} (${doc.email})`);
     res.json({ message: `PIN temporal enviado a ${doc.email}` });
 };

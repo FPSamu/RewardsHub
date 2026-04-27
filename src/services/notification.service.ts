@@ -195,7 +195,7 @@ export const checkAndNotifyUser = async (userId: string): Promise<boolean> => {
     ]);
 
     const businessNameMap = new Map(
-        businesses.map(b => [b._id.toString(), b.name])
+        businesses.map(b => [b._id.toString(), b.username])
     );
     const rewardsByBusiness = new Map<string, IReward[]>();
     for (const reward of allRewards) {

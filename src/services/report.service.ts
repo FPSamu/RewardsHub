@@ -245,7 +245,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
 
     // Fetch business data to get name, logo, and branch names
     const business = await BusinessModel.findById(businessId).exec();
-    const businessName = business?.name || 'Business';
+    const businessName = business?.username || 'Business';
     const logoUrl = business?.logoUrl;
     const branchNameById = new Map<string, string>();
     if (business?.locations) {

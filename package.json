@@ -12,7 +12,7 @@
     "start": "node dist/index.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "jest --runInBand",
+    "test": "mkdir -p logs && jest --runInBand --verbose 2>&1 | tee logs/test-$(date +%Y%m%d-%H%M%S).log",
     "lint": "eslint \"src/**/*.{ts,js}\" --fix",
     "verify-deployment": "node scripts/verify-deployment.js",
     "verify-cors": "ts-node scripts/verify-cors.ts",
@@ -26,6 +26,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "firebase-admin": "^13.8.0",
     "@aws-sdk/client-s3": "^3.946.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.12",
