@@ -51,7 +51,7 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
                 subscription = await subscriptionService.createSubscription(
                     businessId,
                     req.business!.email,
-                    req.business!.name
+                    req.business!.username
                 );
             } catch (err) {
                 console.error('Failed to auto-create subscription:', err);

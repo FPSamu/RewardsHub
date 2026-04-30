@@ -13,6 +13,7 @@
 import { Router } from 'express';
 import * as rewardCtrl from '../controllers/reward.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
+import { requireAdminPin } from '../middleware/adminPin.middleware';
 
 const router = Router();
 
@@ -22,19 +23,15 @@ router.get('/business/:businessId', rewardCtrl.getRewardsByBusinessId);
 // All routes below require business authentication
 router.use(authenticateBusiness);
 
-// Create reward
-router.post('/', rewardCtrl.createReward);
-
-// Get rewards
+// Read-only: no PIN required
 router.get('/', rewardCtrl.getRewards);
 router.get('/system/:systemId', rewardCtrl.getRewardsBySystemId);
 router.get('/:id', rewardCtrl.getRewardById);
 
-// Update reward
-router.put('/:id', rewardCtrl.updateReward);
-
-// Delete reward
-router.delete('/:id', rewardCtrl.deleteReward);
+// Write operations: require admin PIN
+router.post('/', requireAdminPin, rewardCtrl.createReward);
+router.put('/:id', requireAdminPin, rewardCtrl.updateReward);
+router.delete('/:id', requireAdminPin, rewardCtrl.deleteReward);
 
 export default router;
 

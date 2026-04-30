@@ -14,7 +14,7 @@ import { validateShiftTimes } from '../helpers/shiftCalculator';
 export interface PublicWorkShift {
     id: string;
     businessId: string;
-    branchId?: string;
+    branchId: string;
     name: string;
     startTime: string;
     endTime: string;
@@ -32,7 +32,7 @@ function toPublic(doc: IWorkShift): PublicWorkShift {
     return {
         id: doc._id.toString(),
         businessId: doc.businessId.toString(),
-        branchId: doc.branchId?.toString(),
+        branchId: doc.branchId.toString(),
         name: doc.name,
         startTime: doc.startTime,
         endTime: doc.endTime,
@@ -58,21 +58,15 @@ function toPublic(doc: IWorkShift): PublicWorkShift {
  */
 export async function createWorkShift(
     businessId: string,
+    branchId: string,
     name: string,
     startTime: string,
     endTime: string,
     color?: string,
-    description?: string,
-    branchId?: string
+    description?: string
 ): Promise<PublicWorkShift> {
-    // Validate against other shifts in the same scope (branch or business-wide)
-    const scopeQuery: any = { businessId, isActive: true };
-    if (branchId) {
-        scopeQuery.branchId = branchId;
-    } else {
-        scopeQuery.branchId = null;
-    }
-    const existingShifts = await WorkShiftModel.find(scopeQuery);
+    // Validar contra otros turnos de la misma sucursal
+    const existingShifts = await WorkShiftModel.find({ businessId, branchId, isActive: true });
 
     const validation = validateShiftTimes({ startTime, endTime }, existingShifts);
     if (!validation.isValid) {
@@ -81,7 +75,7 @@ export async function createWorkShift(
 
     const shift = new WorkShiftModel({
         businessId,
-        branchId: branchId || null,
+        branchId,
         name,
         startTime,
         endTime,
@@ -137,23 +131,14 @@ export async function getWorkShiftsByBranch(
 }
 
 /**
- * Get active work shifts for shift calculation.
- * When a branchId is provided, returns branch-specific shifts first.
- * Falls back to business-wide shifts if no branch shifts exist.
+ * Get active work shifts for a specific branch (for shift calculation).
  *
  * @param businessId - The business ID
- * @param branchId - Optional branch ID to prefer branch-specific shifts
+ * @param branchId - The branch ID (required)
  * @returns Array of active work shifts (Mongoose documents)
  */
-export async function getActiveWorkShifts(businessId: string, branchId?: string): Promise<IWorkShift[]> {
-    if (branchId) {
-        const branchShifts = await WorkShiftModel.find({ businessId, branchId, isActive: true }).sort({ startTime: 1 });
-        if (branchShifts.length > 0) {
-            return branchShifts;
-        }
-    }
-    // Fall back to business-wide shifts (no branchId)
-    return await WorkShiftModel.find({ businessId, branchId: null, isActive: true }).sort({ startTime: 1 });
+export async function getActiveWorkShifts(businessId: string, branchId: string): Promise<IWorkShift[]> {
+    return await WorkShiftModel.find({ businessId, branchId, isActive: true }).sort({ startTime: 1 });
 }
 
 /**
@@ -183,7 +168,6 @@ export async function updateWorkShift(
         color?: string;
         description?: string;
         isActive?: boolean;
-        branchId?: string | null;
     }
 ): Promise<PublicWorkShift | undefined> {
     const shift = await WorkShiftModel.findById(shiftId);
@@ -191,42 +175,30 @@ export async function updateWorkShift(
         return undefined;
     }
 
-    // Determine the target scope after the update (branchId may be changing)
-    const targetBranchId = 'branchId' in updates
-        ? (updates.branchId || null)
-        : (shift.branchId ?? null);
-
-    // If updating times or moving to a different scope, revalidate
-    if (updates.startTime || updates.endTime || 'branchId' in updates) {
+    // Revalidar horarios si cambian
+    if (updates.startTime || updates.endTime) {
         const newStartTime = updates.startTime || shift.startTime;
         const newEndTime = updates.endTime || shift.endTime;
 
-        // Get other shifts in the target scope, excluding the current shift
         const otherShifts = await WorkShiftModel.find({
             businessId: shift.businessId,
-            branchId: targetBranchId,
+            branchId: shift.branchId,
             _id: { $ne: shiftId },
             isActive: true,
         });
 
-        const validation = validateShiftTimes(
-            { startTime: newStartTime, endTime: newEndTime },
-            otherShifts
-        );
-
+        const validation = validateShiftTimes({ startTime: newStartTime, endTime: newEndTime }, otherShifts);
         if (!validation.isValid) {
             throw new Error(validation.error);
         }
     }
 
-    // Apply updates
     if (updates.name !== undefined) shift.name = updates.name;
     if (updates.startTime !== undefined) shift.startTime = updates.startTime;
     if (updates.endTime !== undefined) shift.endTime = updates.endTime;
     if (updates.color !== undefined) shift.color = updates.color;
     if (updates.description !== undefined) shift.description = updates.description;
     if (updates.isActive !== undefined) shift.isActive = updates.isActive;
-    if ('branchId' in updates) shift.branchId = updates.branchId ? new Types.ObjectId(updates.branchId) : null as any;
 
     await shift.save();
     return toPublic(shift);

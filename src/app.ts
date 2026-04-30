@@ -17,6 +17,7 @@ import deliveryRoutes from './routes/delivery.routes';
 import workShiftRoutes from './routes/workShift.routes';
 import notificationRoutes from './routes/notification.routes';
 import passRoutes from './routes/pass.routes';
+import membershipRoutes from './routes/membership.routes';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const annaRouter = require('./anna/router');
 
@@ -59,7 +60,7 @@ const corsOptions = {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-token'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
     maxAge: 600, // Cache preflight requests for 10 minutes
 };
@@ -96,6 +97,7 @@ app.use('/subscription', subscriptionRoutes);
 app.use('/delivery', deliveryRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/passes', passRoutes);
+app.use('/memberships', membershipRoutes);
 app.use('/anna/api', annaRouter);
 
 export default app;

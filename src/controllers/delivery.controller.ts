@@ -163,7 +163,7 @@ export const claimCode = async (req: Request, res: Response, next: NextFunction)
             userId,
             redemption.businessId.toString(),
             undefined,
-            business ? business.name : 'Unknown Business',
+            business ? business.username : 'Unknown Business',
             'add',
             transactionItemsForService,
             redemption.amount,

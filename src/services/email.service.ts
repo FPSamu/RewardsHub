@@ -134,6 +134,37 @@ export const sendPasswordResetEmail = async (to: string, token: string, isBusine
     return sendEmail(to, subject, html);
 };
 
+export const sendAdminPinEmail = async (to: string, businessName: string, tempPin: string) => {
+    const subject = 'Tu PIN de administrador — RewardsHub';
+    const html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+            <div style="text-align:center;margin-bottom:24px;">
+                <img src="https://rewards-hub-app.s3.us-east-2.amazonaws.com/app/logoRewardsHub.png"
+                     alt="RewardsHub" style="height:48px;object-fit:contain;" />
+            </div>
+            <h1 style="color:#212529;font-size:22px;">¡Hola, ${businessName}! 👋</h1>
+            <p style="color:#495057;font-size:15px;">
+                Tu PIN de administrador para RewardsHub ha sido generado.
+                Úsalo para acceder a las funciones administrativas de tu negocio.
+            </p>
+            <div style="background:#fff8e1;border-left:4px solid #FFB733;padding:20px 24px;
+                        border-radius:8px;margin:24px 0;text-align:center;">
+                <p style="margin:0 0 8px;color:#8B5A00;font-size:14px;font-weight:600;">TU PIN TEMPORAL</p>
+                <p style="margin:0;font-size:36px;font-weight:800;letter-spacing:8px;color:#212529;">
+                    ${tempPin}
+                </p>
+            </div>
+            <p style="color:#495057;font-size:14px;">
+                ⚠️ <strong>Al ingresarlo por primera vez se te pedirá cambiarlo.</strong>
+                Elige un PIN seguro que solo tú y tu equipo administrativo conozcan.
+            </p>
+            <p style="color:#adb5bd;font-size:12px;margin-top:24px;">
+                Si no solicitaste este PIN, ignora este correo.
+            </p>
+        </div>`;
+    return sendEmail(to, subject, html);
+};
+
 export const sendRewardReminderEmail = async (to: string, businessName: string, rewardTitle: string, message?: string) => {
     const subject = `Reward Reminder from ${businessName}`;
 

@@ -2,10 +2,12 @@ import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import * as stripeService from '../services/stripe.service';
 import * as subscriptionService from '../services/subscription.service';
+import * as businessService from '../services/business.service';
 import { PlanType } from '../models/subscription.model';
+import { SubscriptionModel } from '../models/subscription.model';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2025-12-15.clover',
+    apiVersion: '2026-02-25.clover',
 });
 
 export const handleStripeWebhook = async (req: Request, res: Response) => {
@@ -104,11 +106,18 @@ const handleSubscriptionUpdated = async (subscription: Stripe.Subscription) => {
 };
 
 const handleSubscriptionDeleted = async (subscription: Stripe.Subscription) => {
-    await subscriptionService.updateSubscriptionStatus(
+    // Actualizar el estado de la suscripción en MongoDB
+    const updated = await subscriptionService.updateSubscriptionStatus(
         subscription.id,
         'canceled',
         undefined,
         undefined,
         false
     );
+
+    // Marcar el negocio como inactivo ahora que la suscripción expiró realmente
+    if (updated?.businessId) {
+        await businessService.updateBusiness(updated.businessId.toString(), { status: 'inactive' });
+        console.log(`[webhook] Business ${updated.businessId} marked inactive after subscription deletion`);
+    }
 };

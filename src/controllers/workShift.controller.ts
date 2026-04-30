@@ -23,16 +23,14 @@ import * as workShiftService from '../services/workShift.service';
  */
 export async function createWorkShift(req: Request, res: Response) {
     try {
-        const { businessId, name, startTime, endTime, color, description, branchId } = req.body;
+        const { businessId, branchId, name, startTime, endTime, color, description } = req.body;
 
-        // Validate required fields
-        if (!businessId || !name || !startTime || !endTime) {
+        if (!businessId || !branchId || !name || !startTime || !endTime) {
             return res.status(400).json({
-                message: 'Missing required fields: businessId, name, startTime, endTime',
+                message: 'Missing required fields: businessId, branchId, name, startTime, endTime',
             });
         }
 
-        // Validate time format
         const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
         if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
             return res.status(400).json({
@@ -42,12 +40,12 @@ export async function createWorkShift(req: Request, res: Response) {
 
         const shift = await workShiftService.createWorkShift(
             businessId,
+            branchId,
             name,
             startTime,
             endTime,
             color,
-            description,
-            branchId
+            description
         );
 
         return res.status(201).json(shift);
@@ -70,21 +68,15 @@ export async function createWorkShift(req: Request, res: Response) {
 export async function getMyWorkShifts(req: Request, res: Response) {
     try {
         const businessId = (req as any).user?.id;
+        if (!businessId) return res.status(401).json({ message: 'Authentication required' });
 
-        if (!businessId) {
-            return res.status(401).json({ message: 'Authentication required' });
+        const branchId = req.query.branchId as string | undefined;
+        if (!branchId) {
+            return res.status(400).json({ message: 'Missing required query param: branchId' });
         }
 
         const includeInactive = req.query.includeInactive === 'true';
-        const branchId = req.query.branchId as string | undefined;
-
-        let shifts;
-        if (branchId) {
-            shifts = await workShiftService.getWorkShiftsByBranch(businessId, branchId, includeInactive);
-        } else {
-            shifts = await workShiftService.getWorkShiftsByBusiness(businessId, includeInactive);
-        }
-
+        const shifts = await workShiftService.getWorkShiftsByBranch(businessId, branchId, includeInactive);
         return res.json(shifts);
     } catch (err: any) {
         console.error('[getMyWorkShifts] Error:', err);
@@ -168,8 +160,7 @@ export async function getWorkShiftById(req: Request, res: Response) {
  *   endTime?: string,
  *   color?: string,
  *   description?: string,
- *   isActive?: boolean,
- *   branchId?: string | null   // Reassign to a branch (string) or make general (null)
+ *   isActive?: boolean
  * }
  */
 export async function updateWorkShift(req: Request, res: Response) {

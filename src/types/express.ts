@@ -6,9 +6,12 @@ import { ILocation } from '../models/business.model';
  */
 export interface Business {
   id: string;
-  name: string;
+  username: string;
   email: string;
   passHash: string;
+  branchPassHash?: string;
+  registeredWithGoogle: boolean;
+  hasBranchPassword: boolean;
   status: 'active' | 'inactive';
   address?: string;
   locations?: ILocation[];

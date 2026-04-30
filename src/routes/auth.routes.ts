@@ -20,6 +20,7 @@ const upload = multer({
     },
 });
 
+router.post('/check-email', authCtrl.checkEmail);
 router.post('/register', authCtrl.register);
 router.post('/login', authCtrl.login);
 router.get('/me', authenticate, authCtrl.me);
@@ -31,6 +32,9 @@ router.get('/verify-email', authCtrl.verifyEmail);
 router.post('/resend-verification', authenticate, authCtrl.resendVerification);
 router.post('/forgot-password', authCtrl.forgotPassword);
 router.post('/reset-password', authCtrl.resetPassword);
+
+// Cashier login (email + contraseña de sucursal, sin Firebase)
+router.post('/cashier-login', authCtrl.cashierLogin);
 
 // Refresh and logout endpoints
 router.post('/refresh', authCtrl.refresh);
