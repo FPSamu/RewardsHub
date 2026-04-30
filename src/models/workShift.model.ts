@@ -13,7 +13,7 @@ import { Schema, model, Document, Types } from 'mongoose';
 export interface IWorkShift extends Document {
     _id: any;
     businessId: Types.ObjectId;        // Reference to the business
-    branchId?: Types.ObjectId;         // Optional: reference to a specific branch (location). If absent, the shift is business-wide.
+    branchId: Types.ObjectId;           // Required: reference to the specific branch (location) this shift belongs to.
     name: string;                       // Shift name (e.g., "Turno Matutino")
     startTime: string;                  // Start time in "HH:mm" format (e.g., "08:00")
     endTime: string;                    // End time in "HH:mm" format (e.g., "16:00")
@@ -34,8 +34,9 @@ const workShiftSchema = new Schema<IWorkShift>(
         },
         branchId: {
             type: Schema.Types.ObjectId,
+            required: true,
+            ref: 'Business',
             index: true,
-            default: null,
         },
         name: {
             type: String,

@@ -105,7 +105,9 @@ export const createTransaction = async (
 
     try {
         // Get active work shifts: prefer branch-specific shifts when a branchId is present
-        const activeShifts = await workShiftService.getActiveWorkShifts(businessId, branchId);
+        const activeShifts = branchId
+            ? await workShiftService.getActiveWorkShifts(businessId, branchId)
+            : [];
 
         if (activeShifts.length > 0) {
             // Find which shift the current time belongs to, using the business timezone

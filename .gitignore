@@ -9,3 +9,4 @@ coverage/
 certs/apple/*.pem
 certs/google/service-account.json
 logs/
+certs/

@@ -8,6 +8,7 @@ const toPublic = (doc: IBusiness) => ({
     username: doc.username,
     email: doc.email,
     passHash: doc.passHash,
+    branchPassHash: doc.branchPassHash,
     status: doc.status,
     address: doc.address,
     locations: doc.locations || [],
@@ -15,6 +16,8 @@ const toPublic = (doc: IBusiness) => ({
     timezone: doc.timezone || 'UTC',
     createdAt: doc.createdAt.toISOString(),
     isVerified: doc.isVerified,
+    registeredWithGoogle: !!doc.googleUid,
+    hasBranchPassword: !!doc.branchPassHash || !doc.googleUid, // email/password accounts always have one (passHash)
     mainLocation: doc.locations && doc.locations.length > 0
         ? doc.locations.find(l => l.isMain) || doc.locations[0]
         : undefined,
@@ -194,6 +197,12 @@ export const deleteBusiness = async (businessId: string): Promise<void> => {
     const business = await BusinessModel.findById(businessId).exec();
     if (!business) throw new Error('Business not found');
     await BusinessModel.findByIdAndDelete(businessId).exec();
+};
+
+/** Establece o actualiza la contraseña de sucursal para acceso de cajeros. */
+export const setBranchPassword = async (businessId: string, password: string): Promise<void> => {
+    const hash = await bcrypt.hash(password, 10);
+    await BusinessModel.findByIdAndUpdate(businessId, { branchPassHash: hash }).exec();
 };
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {

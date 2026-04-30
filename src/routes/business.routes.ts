@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import * as businessCtrl from '../controllers/business.controller';
+import { getStats, getRecentClientsHandler } from '../controllers/businessStats.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
 import { requireAdminPin } from '../middleware/adminPin.middleware';
 import adminPinRoutes from './adminPin.routes';
@@ -25,6 +26,10 @@ router.get('/verify-email', businessCtrl.verifyEmail);
 router.post('/forgot-password', businessCtrl.forgotPassword);
 router.post('/reset-password', businessCtrl.resetPassword);
 
+// Contraseña de sucursal para cajeros
+router.post('/branch-password', authenticateBusiness, businessCtrl.createBranchPassword);
+router.put('/branch-password', authenticateBusiness, requireAdminPin, businessCtrl.updateBranchPassword);
+
 // Marketing emails
 router.post('/send-reminder', authenticateBusiness, businessCtrl.sendRewardReminder);
 
@@ -39,6 +44,10 @@ router.delete('/locations/:locationId', authenticateBusiness, businessCtrl.remov
 router.use('/admin-pin', adminPinRoutes);
 router.use('/work-shifts', workShiftRoutes);
 router.use('/reports', reportRoutes);
+
+// Stats & dashboard
+router.get('/stats', authenticateBusiness, getStats);
+router.get('/recent-clients', authenticateBusiness, getRecentClientsHandler);
 
 // Get business by ID (must be last to avoid route conflicts)
 router.get('/:id', businessCtrl.getBusinessById);

@@ -35,6 +35,7 @@ export interface IBusiness extends Document {
     adminPinHash?: string;        // bcrypt hash of the admin PIN
     isAdminPinTemporary?: boolean; // true until the business changes it
     googleUid?: string;
+    branchPassHash?: string;      // contraseña de sucursal para acceso de cajeros (sin Google)
 }
 
 const locationSchema = new Schema<ILocation>(
@@ -67,6 +68,7 @@ const businessSchema = new Schema<IBusiness>(
         adminPinHash: { type: String },
         isAdminPinTemporary: { type: Boolean, default: false },
         googleUid: { type: String },
+        branchPassHash: { type: String },
     },
     { timestamps: false }
 );

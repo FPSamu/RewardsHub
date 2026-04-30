@@ -158,21 +158,9 @@ export const resetPin = async (req: Request, res: Response): Promise<void> => {
         return;
     }
 
-    const { password } = req.body;
-    if (!password) {
-        res.status(400).json({ message: 'password is required' });
-        return;
-    }
-
-    const doc = await BusinessModel.findById(business.id).select('+passHash +adminPinHash');
+    const doc = await BusinessModel.findById(business.id).select('+adminPinHash');
     if (!doc) {
         res.status(404).json({ message: 'Business not found' });
-        return;
-    }
-
-    const validPassword = await bcrypt.compare(String(password), doc.passHash);
-    if (!validPassword) {
-        res.status(401).json({ message: 'Contraseña incorrecta' });
         return;
     }
 

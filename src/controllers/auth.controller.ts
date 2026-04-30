@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import * as userService from '../services/user.service';
 import * as businessService from '../services/business.service';
 import * as authService from '../services/auth.service';
@@ -331,6 +332,51 @@ export const refresh = async (req: Request, res: Response) => {
     } catch {
         return res.status(401).json({ message: 'invalid refresh token' });
     }
+};
+
+// ── CASHIER LOGIN ─────────────────────────────────────────────────────────────
+//
+// Login para cajeros: email + contraseña de sucursal, sin pasar por Firebase.
+// El dueño del negocio no comparte su acceso a Google — los cajeros usan
+// esta contraseña separada que no da acceso al correo.
+
+export const cashierLogin = async (req: Request, res: Response) => {
+    const { email, password } = req.body as { email: string; password: string };
+    if (!email || !password) {
+        return res.status(400).json({ message: 'email and password required' });
+    }
+
+    const biz = await businessService.findBusinessByEmail(email);
+    if (!biz) return res.status(401).json({ message: 'invalid credentials' });
+
+    // Cuentas creadas con Google requieren branchPassHash explícito.
+    // Cuentas creadas con email/password usan su passHash como contraseña de sucursal.
+    if (!biz.branchPassHash && biz.registeredWithGoogle) {
+        return res.status(403).json({
+            code: 'NO_BRANCH_PASSWORD',
+            message: 'This business has not set up a branch password yet',
+        });
+    }
+
+    const hashToCheck = biz.branchPassHash ?? biz.passHash;
+    const ok = await bcrypt.compare(password, hashToCheck);
+    if (!ok) return res.status(401).json({ message: 'invalid credentials' });
+
+    const { accessToken, refreshToken } = authService.issueTokenPair(biz.id, 'business');
+    await authService.addRefreshToken(BusinessModel, biz.id, refreshToken);
+
+    return res.json({
+        role: 'business',
+        user: {
+            id: biz.id,
+            username: biz.username,
+            email: biz.email,
+            isVerified: biz.isVerified,
+            createdAt: biz.createdAt,
+        },
+        token: accessToken,
+        refreshToken,
+    });
 };
 
 export const logout = async (req: Request, res: Response) => {

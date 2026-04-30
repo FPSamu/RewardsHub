@@ -83,7 +83,9 @@ export const me = (req: Request, res: Response) => {
         logoUrl: biz.logoUrl,
         category: biz.category,
         timezone: biz.timezone || 'UTC',
-        isVerified: biz.isVerified
+        isVerified: biz.isVerified,
+        hasBranchPassword: biz.hasBranchPassword,
+        registeredWithGoogle: biz.registeredWithGoogle,
     });
 };
 
@@ -91,10 +93,23 @@ export const updateBusiness = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
 
-    const { username, email } = req.body;
+    // El frontend envía "name"; "username" se acepta también por compatibilidad
+    const { name, username, email } = req.body;
+    const resolvedName = name ?? username;
+
     try {
-        const updated = await businessService.updateBusiness(biz.id, { username, email });
-        return res.json(updated);
+        const updated = await businessService.updateBusiness(biz.id, { username: resolvedName, email });
+        return res.json({
+            id: updated.id,
+            name: updated.username,
+            email: updated.email,
+            logoUrl: updated.logoUrl,
+            isVerified: updated.isVerified,
+            status: updated.status,
+            locations: updated.locations,
+            timezone: updated.timezone,
+            createdAt: updated.createdAt,
+        });
     } catch (error: any) {
         if (error.code === 11000) return res.status(409).json({ message: 'email already in use' });
         return res.status(500).json({ message: 'failed to update business' });
@@ -109,7 +124,17 @@ export const uploadLogo = async (req: Request, res: Response) => {
     try {
         const logoUrl = await uploadService.uploadFile(req.file, 'logos');
         const updated = await businessService.updateBusinessLogo(biz.id, logoUrl);
-        return res.json({ message: 'Logo uploaded successfully', logoUrl, business: updated });
+        return res.json({
+            id: updated.id,
+            name: updated.username,
+            email: updated.email,
+            logoUrl: updated.logoUrl,
+            isVerified: updated.isVerified,
+            status: updated.status,
+            locations: updated.locations,
+            timezone: updated.timezone,
+            createdAt: updated.createdAt,
+        });
     } catch (error: any) {
         console.error('Upload error:', error);
         return res.status(500).json({ message: 'failed to upload logo' });
@@ -258,8 +283,20 @@ export const addLocation = async (req: Request, res: Response) => {
     const biz = req.business;
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
 
-    const { address, name, latitude, longitude } = req.body;
+    const { address, name, latitude, longitude, branchPassword } = req.body;
     if (!address) return res.status(400).json({ message: 'address is required' });
+
+    // Si el negocio se registró con Google y aún no tiene contraseña de sucursal,
+    // es obligatorio crearla ahora (las cuentas de email/password ya tienen passHash).
+    if (biz.registeredWithGoogle && !biz.hasBranchPassword) {
+        if (!branchPassword || branchPassword.length < 6) {
+            return res.status(400).json({
+                code: 'BRANCH_PASSWORD_REQUIRED',
+                message: 'You must set a branch password (min 6 characters) to enable cashier access',
+            });
+        }
+        await businessService.setBranchPassword(biz.id, branchPassword);
+    }
 
     try {
         const updated = await businessService.addBranch(biz.id, address, name, latitude, longitude);
@@ -267,6 +304,44 @@ export const addLocation = async (req: Request, res: Response) => {
     } catch (error: any) {
         return res.status(500).json({ message: error.message || 'failed to add location' });
     }
+};
+
+/** POST /business/branch-password — creación inicial, solo si aún no existe */
+export const createBranchPassword = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    if (biz.hasBranchPassword) {
+        return res.status(409).json({
+            code: 'BRANCH_PASSWORD_EXISTS',
+            message: 'Branch password already set. Use PUT /business/branch-password to update it.',
+        });
+    }
+
+    const { password } = req.body as { password?: string };
+    if (!password || password.length < 6) {
+        return res.status(400).json({ message: 'password must be at least 6 characters' });
+    }
+
+    await businessService.setBranchPassword(biz.id, password);
+    return res.status(201).json({
+        message: 'Branch password created successfully',
+        hasBranchPassword: true,
+    });
+};
+
+/** PUT /business/branch-password — actualizar contraseña existente, requiere admin PIN */
+export const updateBranchPassword = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    const { password } = req.body as { password?: string };
+    if (!password || password.length < 6) {
+        return res.status(400).json({ message: 'password must be at least 6 characters' });
+    }
+
+    await businessService.setBranchPassword(biz.id, password);
+    return res.json({ message: 'Branch password updated successfully' });
 };
 
 export const removeLocation = async (req: Request, res: Response) => {

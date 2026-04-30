@@ -9,6 +9,9 @@ export interface Business {
   username: string;
   email: string;
   passHash: string;
+  branchPassHash?: string;
+  registeredWithGoogle: boolean;
+  hasBranchPassword: boolean;
   status: 'active' | 'inactive';
   address?: string;
   locations?: ILocation[];
