@@ -73,7 +73,7 @@ export const deletePlan = async (req: Request, res: Response): Promise<void> => 
 // Cashier actions (business authenticated)
 // ---------------------------------------------------------------------------
 
-/** GET /memberships/client/:userId — membresía activa del cliente en este negocio */
+/** GET /memberships/client/:userId — membresías activas del cliente en este negocio */
 export const getClientMembership = async (req: Request, res: Response): Promise<void> => {
     const business = req.business!;
     const { userId } = req.params;
@@ -84,21 +84,22 @@ export const getClientMembership = async (req: Request, res: Response): Promise<
         { $set: { status: 'expired' } }
     );
 
-    const membership = await ClientMembershipModel.findOne({
+    const memberships = await ClientMembershipModel.find({
         userId,
         businessId: business.id,
         status: 'active',
-    }).lean();
+    }).sort({ endDate: 1 }).lean();
 
-    if (!membership) { res.json(null); return; }
-
-    // Check if already redeemed today (UTC date)
     const todayUTC = todayUTCString();
-    const redeemedToday = membership.lastRedeemedDate
-        ? toUTCString(membership.lastRedeemedDate) === todayUTC
-        : false;
 
-    res.json({ ...membership, redeemedToday });
+    const result = memberships.map(m => ({
+        ...m,
+        redeemedToday: m.lastRedeemedDate
+            ? toUTCString(m.lastRedeemedDate) === todayUTC
+            : false,
+    }));
+
+    res.json(result);
 };
 
 /** POST /memberships/activate — cajero activa membresía para un cliente */
@@ -123,10 +124,10 @@ export const activateMembership = async (req: Request, res: Response): Promise<v
         { $set: { status: 'expired' } }
     );
 
-    // One active membership per client per business
-    const existing = await ClientMembershipModel.findOne({ userId, businessId: business.id, status: 'active' });
+    // Allow multiple active memberships, but not the same plan twice
+    const existing = await ClientMembershipModel.findOne({ userId, businessId: business.id, planId: plan._id, status: 'active' });
     if (existing) {
-        res.status(409).json({ message: 'El cliente ya tiene una membresía activa en este negocio' });
+        res.status(409).json({ message: 'El cliente ya tiene una membresía activa con este plan' });
         return;
     }
 
