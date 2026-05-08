@@ -89,7 +89,7 @@ export const generateCode = async (req: Request, res: Response, next: NextFuncti
 export const claimCode = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = (req as any).user.id;
-        const { code } = req.body;
+        const { code, timezone } = req.body;
 
         if (!code) return res.status(400).json({ message: 'Code is required' });
 
@@ -170,7 +170,7 @@ export const claimCode = async (req: Request, res: Response, next: NextFunction)
             undefined,
             undefined,
             `Pedido a domicilio (Código: ${redemption.code})`,
-            business?.timezone ?? 'UTC'
+            timezone ?? business?.timezone ?? 'UTC'
         );
 
         redemption.isRedeemed = true;

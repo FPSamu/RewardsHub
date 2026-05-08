@@ -231,14 +231,15 @@ export const deleteReward = async (
         }
 
         const { id } = req.params;
-        const hardDelete = req.query.hardDelete === 'true';
+        // Default to hard delete; pass ?softDelete=true to only deactivate
+        const softDelete = req.query.softDelete === 'true';
 
-        const deleted = await rewardService.deleteReward(id, business.id, hardDelete);
+        const deleted = await rewardService.deleteReward(id, business.id, !softDelete);
         if (!deleted) {
             res.status(404).json({ message: 'reward not found' });
             return;
         }
-        res.json({ message: hardDelete ? 'reward permanently deleted' : 'reward deactivated' });
+        res.json({ message: softDelete ? 'reward deactivated' : 'reward permanently deleted' });
     } catch (error) {
         next(error);
     }

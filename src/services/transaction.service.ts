@@ -27,6 +27,7 @@ export interface PublicTransaction {
     notes?: string;
     workShiftId?: string;
     workShiftName?: string;
+    timezone?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -62,6 +63,7 @@ const toPublic = (doc: ITransaction): PublicTransaction => ({
     notes: doc.notes,
     workShiftId: doc.workShiftId?.toString(),
     workShiftName: doc.workShiftName,
+    timezone: doc.timezone,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
 });
@@ -143,6 +145,7 @@ export const createTransaction = async (
         notes,
         workShiftId,
         workShiftName,
+        timezone: timezone !== 'UTC' ? timezone : undefined,
     });
 
     return toPublic(doc as ITransaction);
