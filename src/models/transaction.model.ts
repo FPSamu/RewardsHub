@@ -49,6 +49,9 @@ export interface ITransaction extends Document {
     workShiftId?: Types.ObjectId; // Reference to the work shift
     workShiftName?: string; // Shift name for historical purposes
 
+    // Timezone used when calculating the work shift (IANA, e.g. "America/Mexico_City")
+    timezone?: string;
+
     createdAt: Date;
     updatedAt: Date;
 }
@@ -84,6 +87,7 @@ const transactionSchema = new Schema<ITransaction>(
         notes: { type: String },
         workShiftId: { type: Schema.Types.ObjectId, ref: 'WorkShift' },
         workShiftName: { type: String },
+        timezone: { type: String },
     },
     { timestamps: true }
 );

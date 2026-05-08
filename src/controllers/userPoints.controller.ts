@@ -50,7 +50,7 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'not authenticated' });
     }
 
-    const { userId, purchaseAmount, stampData, branchId, locationId } = req.body as {
+    const { userId, purchaseAmount, stampData, branchId, locationId, timezone } = req.body as {
         userId?: string;
         purchaseAmount?: number;
         stampData?: Array<{
@@ -60,6 +60,7 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         }>;
         branchId?: string;
         locationId?: string;
+        timezone?: string;
     };
 
     // Validate required fields
@@ -173,7 +174,7 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
             undefined,
             undefined,
             'Purchase transaction',
-            business.timezone
+            timezone ?? business.timezone ?? 'UTC'
         );
 
         return res.status(200).json({
@@ -323,7 +324,7 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'not authenticated' });
     }
 
-    const { userId, pointsToSubtract, rewardSystemId, stampData, branchId, locationId } = req.body as {
+    const { userId, pointsToSubtract, rewardSystemId, stampData, branchId, locationId, timezone } = req.body as {
         userId?: string;
         pointsToSubtract?: number;
         rewardSystemId?: string;
@@ -333,6 +334,7 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
         }>;
         branchId?: string;
         locationId?: string;
+        timezone?: string;
     };
 
     // Validate required fields
@@ -442,7 +444,7 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
             undefined,
             undefined,
             'Points/stamps subtraction',
-            business.timezone
+            timezone ?? business.timezone ?? 'UTC'
         );
 
         return res.status(200).json({
