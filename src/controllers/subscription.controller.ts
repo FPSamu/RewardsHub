@@ -32,8 +32,13 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
     try {
         const businessId = req.business!.id;
         // Allow 'plan' from frontend to map to 'planType'
-        let { planType, plan } = req.body as { planType?: PlanType, plan?: PlanType };
-        
+        let { planType, plan, successUrl: bodySuccessUrl, cancelUrl: bodyCancelUrl } = req.body as {
+            planType?: PlanType;
+            plan?: PlanType;
+            successUrl?: string;
+            cancelUrl?: string;
+        };
+
         if (!planType && plan) {
             planType = plan;
         }
@@ -60,8 +65,8 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
         }
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-        const successUrl = `${frontendUrl}/business/subscription?success=true&session_id={CHECKOUT_SESSION_ID}`;
-        const cancelUrl = `${frontendUrl}/business/subscription?canceled=true`;
+        const successUrl = bodySuccessUrl ?? `${frontendUrl}/business/subscription?session_id={CHECKOUT_SESSION_ID}&status=success`;
+        const cancelUrl  = bodyCancelUrl  ?? `${frontendUrl}/business/subscription?canceled=true`;
 
         const session = await stripeService.createCheckoutSession(
             subscription.stripeCustomerId,
