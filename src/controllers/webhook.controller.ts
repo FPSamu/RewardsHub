@@ -73,13 +73,18 @@ const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Session) 
         const subscriptionId = session.subscription as string;
         // Retrieve subscription details to get period
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        
+
+        // current_period_start/end moved to items.data[0] in newer Stripe API versions
+        const item = subscription.items?.data?.[0] as any;
+        const rawStart = (subscription as any).current_period_start ?? item?.current_period_start;
+        const rawEnd   = (subscription as any).current_period_end   ?? item?.current_period_end;
+
         await subscriptionService.activateSubscription(
             businessId,
             planType,
             subscriptionId,
-            new Date((subscription as any).current_period_start * 1000),
-            new Date((subscription as any).current_period_end * 1000)
+            rawStart ? new Date(rawStart * 1000) : undefined,
+            rawEnd   ? new Date(rawEnd   * 1000) : undefined,
         );
     } 
     // If it's a one-time payment (Lifetime Access)
@@ -92,15 +97,20 @@ const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Session) 
 };
 
 const handleSubscriptionUpdated = async (subscription: Stripe.Subscription) => {
-    const status = subscription.status === 'active' ? 'active' : 
-                   subscription.status === 'past_due' ? 'past_due' : 
+    const status = subscription.status === 'active' ? 'active' :
+                   subscription.status === 'past_due' ? 'past_due' :
                    subscription.status === 'canceled' ? 'canceled' : 'none';
+
+    // current_period_start/end moved to items.data[0] in newer Stripe API versions
+    const item = subscription.items?.data?.[0] as any;
+    const rawStart = (subscription as any).current_period_start ?? item?.current_period_start;
+    const rawEnd   = (subscription as any).current_period_end   ?? item?.current_period_end;
 
     await subscriptionService.updateSubscriptionStatus(
         subscription.id,
         status,
-        new Date((subscription as any).current_period_start * 1000),
-        new Date((subscription as any).current_period_end * 1000),
+        rawStart ? new Date(rawStart * 1000) : undefined,
+        rawEnd   ? new Date(rawEnd   * 1000) : undefined,
         subscription.cancel_at_period_end
     );
 };
