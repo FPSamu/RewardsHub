@@ -379,6 +379,19 @@ export const cashierLogin = async (req: Request, res: Response) => {
     });
 };
 
+export const updateFcmToken = async (req: Request, res: Response) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: 'not authenticated' });
+
+    const { fcmToken } = req.body as { fcmToken?: string };
+    if (!fcmToken || typeof fcmToken !== 'string') {
+        return res.status(400).json({ message: 'fcmToken required' });
+    }
+
+    await UserModel.findByIdAndUpdate(user.id, { fcmToken });
+    return res.json({ ok: true });
+};
+
 export const logout = async (req: Request, res: Response) => {
     const { refreshToken } = req.body as { refreshToken?: string };
     if (!refreshToken) return res.status(400).json({ message: 'refreshToken required' });

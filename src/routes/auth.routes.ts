@@ -36,6 +36,9 @@ router.post('/reset-password', authCtrl.resetPassword);
 // Cashier login (email + contraseña de sucursal, sin Firebase)
 router.post('/cashier-login', authCtrl.cashierLogin);
 
+// FCM token
+router.put('/fcm-token', authenticate, authCtrl.updateFcmToken);
+
 // Refresh and logout endpoints
 router.post('/refresh', authCtrl.refresh);
 router.post('/logout', authCtrl.logout);

@@ -16,6 +16,7 @@ import { RewardModel, IReward } from '../models/reward.model';
 import { BusinessModel } from '../models/business.model';
 import { NotificationLogModel } from '../models/notificationLog.model';
 import { sendEmail } from './email.service';
+import { sendPushNotification, sendMultiplePushNotifications } from './firebase.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -229,6 +230,15 @@ export const checkAndNotifyUser = async (userId: string): Promise<boolean> => {
 
     await sendEmail(user.email, subject, buildNotificationEmail(user.username, summaries));
 
+    if (user.fcmToken) {
+        const pushBody = totalAvailable > 0
+            ? `Tienes ${totalAvailable} recompensa${totalAvailable > 1 ? 's' : ''} lista${totalAvailable > 1 ? 's' : ''} para canjear en tus negocios favoritos.`
+            : `Estás muy cerca de conseguir una recompensa. ¡Una visita más y la tienes!`;
+        await sendPushNotification(user.fcmToken, subject, pushBody).catch(err =>
+            console.error('[Notifications] Push failed for user', userId, err?.message)
+        );
+    }
+
     await NotificationLogModel.create({
         userId: userObjectId,
         rewardsAvailable: totalAvailable,
@@ -288,4 +298,49 @@ export const notifyBusinessUsers = async (
 
     console.log(`📬 [Notifications] Business trigger done. Processed: ${usersWithPoints.length}, Sent: ${sent}`);
     return { processed: usersWithPoints.length, sent };
+};
+
+// ─── Engagement batch ─────────────────────────────────────────────────────────
+
+const ENGAGEMENT_MESSAGES = [
+    { title: '¡Buenos días! ☀️', body: '¿Ya revisaste cuántos puntos tienes acumulados? Ábre RewardsHub y descúbrelo.' },
+    { title: '¿Sabías esto? 🎁', body: 'Puedes canjear tus puntos por premios en tus negocios favoritos. ¡Revísalos ahora!' },
+    { title: 'Cada visita cuenta 🌟', body: 'Tus puntos no caducan. Sigue acumulando y canjea cuando quieras.' },
+    { title: 'Negocios cerca de ti 🏪', body: 'Hay negocios afiliados esperándote. Abre el mapa y descubre recompensas cercanas.' },
+    { title: '¡No te quedes sin canjear! ⚡', body: 'Revisa tus recompensas disponibles hoy. ¡Una visita puede marcar la diferencia!' },
+    { title: 'Tu fidelidad tiene premio 🎯', body: 'Sigue visitando tus negocios favoritos y acumula puntos y sellos únicos.' },
+    { title: '¡Buen fin de semana! 🎉', body: 'Aprovecha para visitar negocios afiliados y sumar puntos a tu cuenta.' },
+];
+
+export const runEngagementBatch = async (): Promise<{ sent: number; failed: number }> => {
+    const dayIndex = new Date().getDay();
+    const { title, body } = ENGAGEMENT_MESSAGES[dayIndex];
+
+    const usersWithToken = await UserModel.find(
+        { fcmToken: { $exists: true, $ne: null } },
+        { fcmToken: 1 }
+    ).lean();
+
+    const tokens = usersWithToken.map(u => u.fcmToken as string).filter(Boolean);
+    if (tokens.length === 0) {
+        console.log('📲 [Engagement] No users with FCM token, skipping.');
+        return { sent: 0, failed: 0 };
+    }
+
+    const chunkSize = 500;
+    let sent = 0;
+    let failed = 0;
+
+    for (let i = 0; i < tokens.length; i += chunkSize) {
+        const chunk = tokens.slice(i, i + chunkSize);
+        const result = await sendMultiplePushNotifications(chunk, title, body).catch(err => {
+            console.error('[Engagement] Multicast error:', err?.message);
+            return { successCount: 0, failureCount: chunk.length };
+        });
+        sent += result.successCount;
+        failed += result.failureCount;
+    }
+
+    console.log(`📲 [Engagement] Batch done. Sent: ${sent}, Failed: ${failed}`);
+    return { sent, failed };
 };

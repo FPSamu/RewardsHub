@@ -5,7 +5,7 @@
  * Businesses can trigger notifications for their own customers.
  */
 import { Request, Response } from 'express';
-import { notifyBusinessUsers, runNotificationBatch } from '../services/notification.service';
+import { notifyBusinessUsers, runNotificationBatch, runEngagementBatch } from '../services/notification.service';
 
 /**
  * POST /notifications/trigger
@@ -52,5 +52,21 @@ export const runBatch = async (req: Request, res: Response): Promise<void> => {
     } catch (err: any) {
         console.error('❌ [Notifications] runBatch error:', err);
         res.status(500).json({ message: 'Error en el batch', error: err.message });
+    }
+};
+
+export const runEngagement = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const adminSecret = process.env.ADMIN_SECRET;
+        if (adminSecret && req.headers['x-admin-secret'] !== adminSecret) {
+            res.status(403).json({ message: 'Forbidden' });
+            return;
+        }
+
+        const result = await runEngagementBatch();
+        res.json({ message: 'Engagement batch completado', ...result });
+    } catch (err: any) {
+        console.error('❌ [Notifications] runEngagement error:', err);
+        res.status(500).json({ message: 'Error en el engagement batch', error: err.message });
     }
 };

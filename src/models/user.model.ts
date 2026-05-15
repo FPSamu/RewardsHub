@@ -14,6 +14,7 @@ export interface IUser extends Document {
     resetPasswordToken?: string;
     resetPasswordExpires?: Date;
     googleUid?: string;
+    fcmToken?: string;
 }
 
 const userSchema = new Schema<IUser>(
@@ -29,6 +30,7 @@ const userSchema = new Schema<IUser>(
         resetPasswordToken: { type: String },
         resetPasswordExpires: { type: Date },
         googleUid: { type: String },
+        fcmToken: { type: String },
     },
     { timestamps: false }
 );

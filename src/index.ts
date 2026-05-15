@@ -2,7 +2,7 @@ import './types/express';
 import app from './app';
 import connectDb from './db/mongoose';
 import os from 'os';
-import { runNotificationBatch } from './services/notification.service';
+import { runNotificationBatch, runEngagementBatch } from './services/notification.service';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 const host = '0.0.0.0'; // Listen on all network interfaces
@@ -11,6 +11,7 @@ const start = async () => {
     // Ensure DB connection is established before accepting requests
     await connectDb();
     scheduleNotifications();
+    scheduleEngagement();
     app.listen(port, host, () => {
         console.log(`Server running on port ${port}`);
         console.log(`Local: http://localhost:${port}`);
@@ -48,6 +49,27 @@ const scheduleNotifications = () => {
         setInterval(() => {
             runNotificationBatch().catch(err =>
                 console.error('❌ [Notifications] Batch error:', err)
+            );
+        }, 24 * 60 * 60 * 1000);
+    }, msUntilFirst);
+};
+
+const scheduleEngagement = () => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(19, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+
+    const msUntilFirst = next.getTime() - now.getTime();
+    console.log(`📅 [Engagement] First batch scheduled in ${Math.round(msUntilFirst / 60000)} minutes`);
+
+    setTimeout(() => {
+        runEngagementBatch().catch(err =>
+            console.error('❌ [Engagement] Batch error:', err)
+        );
+        setInterval(() => {
+            runEngagementBatch().catch(err =>
+                console.error('❌ [Engagement] Batch error:', err)
             );
         }, 24 * 60 * 60 * 1000);
     }, msUntilFirst);

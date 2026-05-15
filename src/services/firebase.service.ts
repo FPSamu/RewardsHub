@@ -60,3 +60,35 @@ export const checkEmailExists = async (email: string): Promise<boolean> => {
 
 // Alias para compatibilidad con código existente
 export const verifyGoogleToken = verifyIdToken;
+
+export const sendPushNotification = async (
+    fcmToken: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+): Promise<void> => {
+    await getAdmin().messaging().send({
+        token: fcmToken,
+        notification: { title, body },
+        data,
+        apns: { payload: { aps: { sound: 'default' } } },
+        android: { priority: 'high' },
+    });
+};
+
+export const sendMultiplePushNotifications = async (
+    tokens: string[],
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+): Promise<{ successCount: number; failureCount: number }> => {
+    if (tokens.length === 0) return { successCount: 0, failureCount: 0 };
+    const response = await getAdmin().messaging().sendEachForMulticast({
+        tokens,
+        notification: { title, body },
+        data,
+        apns: { payload: { aps: { sound: 'default' } } },
+        android: { priority: 'high' },
+    });
+    return { successCount: response.successCount, failureCount: response.failureCount };
+};

@@ -6,11 +6,12 @@
  */
 import { Router } from 'express';
 import { authenticateBusiness } from '../middleware/business.middleware';
-import { triggerBusinessNotifications, runBatch } from '../controllers/notification.controller';
+import { triggerBusinessNotifications, runBatch, runEngagement } from '../controllers/notification.controller';
 
 const router = Router();
 
 router.post('/trigger', authenticateBusiness, triggerBusinessNotifications);
 router.post('/run-batch', runBatch);
+router.post('/run-engagement', runEngagement);
 
 export default router;
