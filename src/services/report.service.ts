@@ -121,6 +121,8 @@ export interface ReportData {
         totalPoints: number;
         totalStamps: number;
         totalDays: number;
+        totalRevenue: number;           // sum of purchaseAmount for 'add' transactions
+        unassignedTransactions: number; // transactions without a work shift
     };
     dailyData: DailyReport[];
     branchSummary: Array<{
@@ -203,6 +205,8 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
     let totalTransactions = 0;
     let totalPoints = 0;
     let totalStamps = 0;
+    let totalRevenue = 0;
+    let unassignedTransactions = 0;
 
     for (const [dateStr, dayTransactions] of transactionsByDay) {
         const date = new Date(dateStr);
@@ -243,6 +247,12 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
         totalStamps += dayTotalStamps;
     }
 
+    // Compute revenue and unassigned count across all transactions
+    for (const t of transactions) {
+        if (t.type === 'add' && t.purchaseAmount) totalRevenue += t.purchaseAmount;
+        if (!t.workShiftId) unassignedTransactions++;
+    }
+
     // Fetch business data to get name, logo, and branch names
     const business = await BusinessModel.findById(businessId).exec();
     const businessName = business?.username || 'Business';
@@ -276,6 +286,8 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
             totalPoints,
             totalStamps,
             totalDays: dailyData.length,
+            totalRevenue,
+            unassignedTransactions,
         },
         dailyData,
         branchSummary,
