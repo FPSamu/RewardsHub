@@ -1,729 +1,602 @@
 /**
  * PDF service
- * 
- * This module handles PDF generation for business reports.
- * Uses PDFKit to create professional-looking reports with tables and summaries.
+ *
+ * Generates business transaction reports as PDF using PDFKit.
+ * Structure:
+ *   1. Header (logo + business name + period)
+ *   2. KPI summary cards
+ *   3. Insights row (best day, busiest shift, unassigned warning)
+ *   4. Totals by shift (if shifts configured)
+ *   5. Totals by branch (if > 1 branch)
+ *   6. Redemptions (only if totalRedemptions > 0)
+ *   7. Daily detail table (compact)
  */
 
-import { ReportData, DailyReport, ShiftSummary, RedemptionSummary } from './report.service';
+import { ReportData, DailyReport, ShiftSummary } from './report.service';
 import axios from 'axios';
 
-// Import PDFKit using require (works better with TypeScript)
 const PDFDocument = require('pdfkit');
 
-// Color palette for professional design
-const COLORS = {
-    primary: '#1E40AF',      // Deep blue
-    secondary: '#3B82F6',    // Lighter blue
-    accent: '#10B981',       // Green for positive metrics
-    text: '#1F2937',         // Dark gray for text
-    textLight: '#6B7280',    // Light gray for secondary text
-    border: '#E5E7EB',       // Light border
-    background: '#F9FAFB',   // Very light gray background
-    white: '#FFFFFF',
+// ─── Colour palette ────────────────────────────────────────────────────────────
+const C = {
+    primary:    '#1E40AF',
+    secondary:  '#3B82F6',
+    accent:     '#10B981',
+    warning:    '#F59E0B',
+    danger:     '#EF4444',
+    text:       '#1F2937',
+    textLight:  '#6B7280',
+    border:     '#E5E7EB',
+    bg:         '#F9FAFB',
+    white:      '#FFFFFF',
 };
 
-/**
- * Generate a PDF report from report data
- * 
- * @param reportData - Complete report data structure
- * @returns PDF document as Buffer
- */
+const PAGE_W    = 612;  // US Letter
+const MARGIN    = 50;
+const CONTENT_W = PAGE_W - MARGIN * 2;
+const PAGE_H    = 792;
+const FOOTER_H  = 40;
+const SAFE_BOTTOM = PAGE_H - FOOTER_H - 20;
+
+// ─── Public entry point ────────────────────────────────────────────────────────
 export async function generateReportPDF(reportData: ReportData): Promise<Buffer> {
     return new Promise(async (resolve, reject) => {
         try {
-            // Download logo if available
             let logoBuffer: Buffer | null = null;
             if (reportData.metadata.logoUrl) {
                 try {
-                    const response = await axios.get(reportData.metadata.logoUrl, {
+                    const res = await axios.get(reportData.metadata.logoUrl, {
                         responseType: 'arraybuffer',
                         timeout: 5000,
                     });
-                    logoBuffer = Buffer.from(response.data as ArrayBuffer);
-                    console.log('[generateReportPDF] Logo downloaded successfully');
-                } catch (err) {
-                    console.error('[generateReportPDF] Error downloading logo:', err);
+                    logoBuffer = Buffer.from(res.data as ArrayBuffer);
+                } catch {
+                    // logo fetch failed — continue without it
                 }
             }
 
-            // Create PDF document
             const doc = new PDFDocument({
                 size: 'LETTER',
-                margins: {
-                    top: 50,
-                    bottom: 60,
-                    left: 50,
-                    right: 50,
-                },
-                bufferPages: true, // Enable page buffering for footer
+                margins: { top: MARGIN, bottom: 0, left: MARGIN, right: MARGIN },
+                bufferPages: true,
             });
 
-            // Collect PDF data in chunks
             const chunks: Buffer[] = [];
-            doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('data', (c: Buffer) => chunks.push(c));
+            doc.on('end',  () => resolve(Buffer.concat(chunks)));
             doc.on('error', reject);
 
-            // Generate PDF content
-            generatePDFContent(doc, reportData, logoBuffer);
+            buildDocument(doc, reportData, logoBuffer);
 
-            // Finalize PDF
+            // doc.end() internally calls flushPages() — do NOT call it manually
+            // or pages get finalized twice (producing duplicates).
             doc.end();
-        } catch (error) {
-            reject(error);
+        } catch (err) {
+            reject(err);
         }
     });
 }
 
-/**
- * Generate the content of the PDF
- */
-function generatePDFContent(
+// ─── Document builder ─────────────────────────────────────────────────────────
+function buildDocument(
     doc: PDFKit.PDFDocument,
-    reportData: ReportData,
-    logoBuffer: Buffer | null
+    data: ReportData,
+    logo: Buffer | null,
 ): void {
-    const { metadata, summary, dailyData, periodSummary } = reportData;
+    const { metadata, summary, dailyData, periodSummary, branchSummary, redemptionSummary } = data;
 
-    // Header with logo and title
-    addHeader(doc, metadata, logoBuffer);
+    const hasPoints    = summary.totalPoints  !== 0;
+    const hasStamps    = summary.totalStamps  !== 0;
+    const hasRevenue   = summary.totalRevenue > 0;
+    const hasShifts    = periodSummary.totalsByShift.some(s => s.shiftName !== 'Sin turno asignado');
+    const multiBranch  = branchSummary.length > 1;
+    const hasRedemptions = redemptionSummary.totalRedemptions > 0;
 
-    // Executive summary box
-    addExecutiveSummary(doc, summary, metadata.reportPeriod);
+    // 1. Header
+    addHeader(doc, metadata, logo);
 
-    // Period summary tables
-    addPeriodSummaryTables(doc, periodSummary);
+    // 2. KPI cards
+    addKPICards(doc, summary, hasPoints, hasStamps, hasRevenue);
 
-    // Branch summary
-    if (reportData.branchSummary && reportData.branchSummary.length > 0) {
-        addBranchSummary(doc, reportData.branchSummary);
+    // 3. Insights row
+    addInsights(doc, data, hasShifts);
+
+    // 4. Shift breakdown (only if actual shifts configured)
+    if (hasShifts) {
+        needSpace(doc, 160);
+        addSectionTitle(doc, 'RESUMEN POR TURNO');
+        const shiftCols = buildShiftColumns(hasPoints, hasStamps);
+        drawTable(doc, {
+            headers: shiftCols.headers,
+            rows: periodSummary.totalsByShift.map(s => shiftCols.row(s)),
+            widths: shiftCols.widths,
+        });
+        doc.moveDown(1.5);
     }
 
-    // Redemptions section
-    addRedemptionSection(doc, reportData.redemptionSummary);
+    // 5. Multi-branch breakdown
+    if (multiBranch) {
+        needSpace(doc, 120);
+        addSectionTitle(doc, 'RESUMEN POR SUCURSAL');
+        drawTable(doc, {
+            headers: buildBranchHeaders(hasPoints, hasStamps),
+            rows: branchSummary.map(b => buildBranchRow(b, hasPoints, hasStamps)),
+            widths: buildBranchWidths(hasPoints, hasStamps),
+        });
+        doc.moveDown(1.5);
+    }
 
-    // Daily breakdown
+    // 6. Redemptions (conditional — no blank page if empty)
+    if (hasRedemptions) {
+        needSpace(doc, 180);
+        addRedemptionSection(doc, redemptionSummary);
+    }
+
+    // 7. Daily detail
     if (dailyData.length > 0) {
-        addDailyBreakdown(doc, dailyData);
+        needSpace(doc, 120);
+        addDailySection(doc, dailyData, hasPoints, hasStamps);
     }
 
-    // Footer on all pages
+    // Footer on every page
     addFooter(doc, metadata.generatedAt);
 }
 
-/**
- * Add professional header with logo
- */
+// ─── 1. Header ────────────────────────────────────────────────────────────────
 function addHeader(
     doc: PDFKit.PDFDocument,
-    metadata: ReportData['metadata'],
-    logoBuffer: Buffer | null
+    meta: ReportData['metadata'],
+    logo: Buffer | null,
 ): void {
-    const pageWidth = doc.page.width;
-    const startY = doc.y;
+    const headerH = 120;
+    doc.rect(0, 0, PAGE_W, headerH).fill(C.primary);
 
-    // Background header bar
-    doc.rect(0, 0, pageWidth, 140)
-        .fill(COLORS.primary);
+    let textX = MARGIN;
 
-    doc.y = startY + 20;
-
-    // Add logo if available
-    if (logoBuffer) {
+    if (logo) {
         try {
-            const logoSize = 60;
-            const logoX = 50;
-
-            doc.image(logoBuffer, logoX, doc.y, {
-                fit: [logoSize, logoSize],
-            });
-        } catch (err) {
-            console.error('[addHeader] Error adding logo:', err);
-        }
+            doc.image(logo, MARGIN, 25, { fit: [55, 55] });
+            textX = MARGIN + 70;
+        } catch { /* ignore */ }
     }
 
-    // Business name and title (white text on blue background)
-    const textX = logoBuffer ? 130 : 50;
-    doc.fillColor(COLORS.white)
-        .fontSize(22)
-        .font('Helvetica-Bold')
-        .text(metadata.businessName, textX, startY + 25, { width: 400 });
+    doc.fillColor(C.white)
+        .fontSize(20).font('Helvetica-Bold')
+        .text(meta.businessName, textX, 28, { width: PAGE_W - textX - MARGIN });
 
-    doc.fontSize(14)
-        .font('Helvetica')
-        .fillColor('#E0E7FF')
-        .text('Reporte de Auditoría de Transacciones', textX, doc.y + 5);
+    doc.fontSize(12).font('Helvetica').fillColor('#BFDBFE')
+        .text('Reporte de Transacciones', textX, doc.y + 4);
 
-    // Date range in a box
-    const startDate = formatDate(metadata.reportPeriod.startDate);
-    const endDate = formatDate(metadata.reportPeriod.endDate);
+    const sd = fmtDate(meta.reportPeriod.startDate);
+    const ed = fmtDate(meta.reportPeriod.endDate);
+    doc.fontSize(10).fillColor(C.white)
+        .text(`Período: ${sd} — ${ed}`, textX, doc.y + 6);
 
-    doc.fontSize(11)
-        .fillColor(COLORS.white)
-        .text(`Período: ${startDate} - ${endDate}`, textX, doc.y + 8);
-
-    // Reset position after header
-    doc.y = 160;
-    doc.fillColor(COLORS.text);
+    doc.y = headerH + 20;
+    doc.fillColor(C.text);
 }
 
-/**
- * Add executive summary in a highlighted box
- */
-function addExecutiveSummary(
+// ─── 2. KPI cards ─────────────────────────────────────────────────────────────
+function addKPICards(
     doc: PDFKit.PDFDocument,
     summary: ReportData['summary'],
-    period: { startDate: Date; endDate: Date }
+    hasPoints: boolean,
+    hasStamps: boolean,
+    hasRevenue: boolean,
 ): void {
-    const boxX = 50;
-    const boxY = doc.y;
-    const boxWidth = doc.page.width - 100;
-    const boxHeight = 120;
+    const cards: Array<{ label: string; value: string; color: string }> = [];
 
-    // Background box with subtle shadow effect
-    doc.rect(boxX + 2, boxY + 2, boxWidth, boxHeight)
-        .fill('#00000010');
+    cards.push({ label: 'Transacciones',     value: fmt(summary.totalTransactions), color: C.primary });
+    if (hasRevenue)  cards.push({ label: 'Monto en ventas', value: fmtCurrency(summary.totalRevenue), color: C.accent });
+    if (hasPoints)   cards.push({ label: 'Puntos otorgados', value: fmt(summary.totalPoints), color: C.secondary });
+    if (hasStamps)   cards.push({ label: 'Sellos otorgados', value: fmt(summary.totalStamps), color: C.secondary });
+    cards.push({ label: 'Días con actividad', value: summary.totalDays.toString(), color: C.textLight });
+    cards.push({ label: 'Canjes realizados',  value: fmt(summary.unassignedTransactions === summary.totalTransactions ? 0 : summary.totalTransactions), color: C.textLight });
 
-    doc.rect(boxX, boxY, boxWidth, boxHeight)
-        .fill(COLORS.background)
-        .stroke(COLORS.border);
+    // Up to 3 per row
+    const cols   = Math.min(cards.length, 3);
+    const gap    = 10;
+    const cardW  = (CONTENT_W - gap * (cols - 1)) / cols;
+    const cardH  = 72;
+    const startY = doc.y;
 
-    doc.y = boxY + 15;
+    cards.forEach((card, i) => {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const x   = MARGIN + col * (cardW + gap);
+        const y   = startY + row * (cardH + gap);
 
-    // Title
-    doc.fontSize(14)
-        .font('Helvetica-Bold')
-        .fillColor(COLORS.primary)
-        .text('RESUMEN EJECUTIVO', boxX + 20, doc.y);
+        // Card background
+        doc.rect(x, y, cardW, cardH).fill(C.bg).stroke(C.border);
 
-    doc.moveDown(0.8);
+        // Accent bar on top
+        doc.rect(x, y, cardW, 4).fill(card.color);
 
-    // Metrics in a grid layout
+        // Label
+        doc.fontSize(8).font('Helvetica').fillColor(C.textLight)
+            .text(card.label.toUpperCase(), x + 10, y + 14, { width: cardW - 20 });
+
+        // Value
+        doc.fontSize(22).font('Helvetica-Bold').fillColor(card.color)
+            .text(card.value, x + 10, y + 28, { width: cardW - 20 });
+    });
+
+    const rows = Math.ceil(cards.length / cols);
+    doc.y = startY + rows * (cardH + gap) + 10;
+    doc.fillColor(C.text);
+}
+
+// ─── 3. Insights row ──────────────────────────────────────────────────────────
+function addInsights(
+    doc: PDFKit.PDFDocument,
+    data: ReportData,
+    hasShifts: boolean,
+): void {
+    const insights: Array<{ icon: string; text: string; color: string }> = [];
+
+    // Best day
+    if (data.dailyData.length > 0) {
+        const best = data.dailyData.reduce((a, b) =>
+            b.dailyTotal.transactions > a.dailyTotal.transactions ? b : a
+        );
+        insights.push({
+            icon: '★',
+            text: `Mejor día: ${fmtDate(best.date)} con ${best.dailyTotal.transactions} transacciones`,
+            color: C.accent,
+        });
+    }
+
+    // Busiest shift
+    if (hasShifts && data.periodSummary.totalsByShift.length > 0) {
+        const best = data.periodSummary.totalsByShift
+            .filter(s => s.shiftName !== 'Sin turno asignado')
+            .reduce((a, b) => b.transactions > a.transactions ? b : a);
+        insights.push({
+            icon: '◷',
+            text: `Turno más activo: ${best.shiftName} (${best.transactions} transacciones)`,
+            color: C.secondary,
+        });
+    }
+
+    // Unassigned warning
+    if (data.summary.unassignedTransactions > 0) {
+        insights.push({
+            icon: '⚠',
+            text: `${data.summary.unassignedTransactions} transacciones sin turno asignado`,
+            color: C.warning,
+        });
+    }
+
+    if (insights.length === 0) return;
+
+    const y = doc.y;
+    const rowH = 28;
+    const totalH = insights.length * rowH + 16;
+
+    doc.rect(MARGIN, y, CONTENT_W, totalH).fill(C.bg).stroke(C.border);
+
+    insights.forEach((ins, i) => {
+        const iy = y + 8 + i * rowH;
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(ins.color)
+            .text(ins.icon, MARGIN + 10, iy + 5);
+        doc.fontSize(9).font('Helvetica').fillColor(C.text)
+            .text(ins.text, MARGIN + 28, iy + 6, { width: CONTENT_W - 38 });
+    });
+
+    doc.y = y + totalH + 16;
+    doc.fillColor(C.text);
+}
+
+// ─── 6. Redemptions ───────────────────────────────────────────────────────────
+function addRedemptionSection(
+    doc: PDFKit.PDFDocument,
+    summary: ReportData['redemptionSummary'],
+): void {
+    addSectionTitle(doc, 'CANJES DE RECOMPENSAS');
+
+    // Mini KPI row
     const metrics = [
-        { label: 'Total de Transacciones', value: summary.totalTransactions.toLocaleString() },
-        { label: 'Puntos Otorgados', value: summary.totalPoints.toLocaleString() },
-        { label: 'Sellos Otorgados', value: summary.totalStamps.toLocaleString() },
-        { label: 'Días con Actividad', value: summary.totalDays.toString() },
+        { label: 'Total canjes',      value: fmt(summary.totalRedemptions) },
+        { label: 'Puntos canjeados',  value: fmt(summary.totalPointsRedeemed) },
+        { label: 'Sellos canjeados',  value: fmt(summary.totalStampsRedeemed) },
     ];
+    const mW = CONTENT_W / 3;
+    const mY = doc.y;
+    const mH = 56;
 
-    const metricsY = doc.y;
-    const colWidth = (boxWidth - 40) / 2;
+    doc.rect(MARGIN, mY, CONTENT_W, mH).fill(C.bg).stroke(C.border);
 
-    metrics.forEach((metric, index) => {
-        const col = index % 2;
-        const row = Math.floor(index / 2);
-        const x = boxX + 20 + (col * colWidth);
-        const y = metricsY + (row * 35);
-
-        doc.fontSize(9)
-            .font('Helvetica')
-            .fillColor(COLORS.textLight)
-            .text(metric.label, x, y);
-
-        doc.fontSize(18)
-            .font('Helvetica-Bold')
-            .fillColor(COLORS.primary)
-            .text(metric.value, x, y + 12);
+    metrics.forEach((m, i) => {
+        const x = MARGIN + i * mW + 12;
+        doc.fontSize(8).font('Helvetica').fillColor(C.textLight)
+            .text(m.label.toUpperCase(), x, mY + 10, { width: mW - 20 });
+        doc.fontSize(18).font('Helvetica-Bold').fillColor(C.accent)
+            .text(m.value, x, mY + 22, { width: mW - 20 });
     });
 
-    doc.y = boxY + boxHeight + 25;
-    doc.fillColor(COLORS.text);
-}
+    doc.y = mY + mH + 12;
+    doc.fillColor(C.text);
 
-/**
- * Add period summary tables with professional styling
- */
-function addPeriodSummaryTables(
-    doc: PDFKit.PDFDocument,
-    periodSummary: ReportData['periodSummary']
-): void {
-    // Check if we need a new page
-    if (doc.y > 600) {
-        doc.addPage();
-    }
+    if (summary.redemptions.length === 0) return;
 
-    // Section title
-    addSectionTitle(doc, 'ANÁLISIS POR TURNO DE TRABAJO');
-
-    // Table
-    drawProfessionalTable(doc, {
-        headers: ['Turno', 'Transacciones', 'Puntos', 'Sellos'],
-        rows: periodSummary.totalsByShift.map(shift => [
-            shift.shiftName,
-            shift.transactions.toLocaleString(),
-            shift.points.toLocaleString(),
-            shift.stamps.toLocaleString(),
+    drawTable(doc, {
+        headers: ['Fecha', 'Hora', 'Cliente', 'Recompensa', 'Pts', 'Sellos', 'Sucursal'],
+        rows: summary.redemptions.map(r => [
+            r.date,
+            r.time,
+            r.clientName,
+            r.rewardName,
+            r.pointsRedeemed > 0 ? fmt(r.pointsRedeemed) : '-',
+            r.stampsRedeemed > 0 ? fmt(r.stampsRedeemed) : '-',
+            r.branchName,
         ]),
-        columnWidths: [200, 120, 120, 120],
-    });
-
-    doc.moveDown(2);
-
-    // Systems summary
-    if (doc.y > 600) {
-        doc.addPage();
-    }
-
-    addSectionTitle(doc, 'ANÁLISIS POR SISTEMA DE RECOMPENSAS');
-
-    drawProfessionalTable(doc, {
-        headers: ['Sistema', 'Transacciones', 'Puntos', 'Sellos'],
-        rows: periodSummary.totalsBySystem.map(system => [
-            system.systemName,
-            system.transactions.toLocaleString(),
-            system.points.toLocaleString(),
-            system.stamps.toLocaleString(),
-        ]),
-        columnWidths: [200, 120, 120, 120],
-    });
-
-    doc.moveDown(2);
-}
-
-/**
- * Add branch summary section
- */
-function addBranchSummary(
-    doc: PDFKit.PDFDocument,
-    branchSummary: ReportData['branchSummary']
-): void {
-    if (doc.y > 600) {
-        doc.addPage();
-    }
-
-    addSectionTitle(doc, 'RESUMEN POR SUCURSAL');
-
-    drawProfessionalTable(doc, {
-        headers: ['Sucursal', 'Transacciones', 'Puntos', 'Sellos'],
-        rows: branchSummary.map(branch => [
-            branch.branchName,
-            branch.totals.transactions.toLocaleString(),
-            branch.totals.points.toLocaleString(),
-            branch.totals.stamps.toLocaleString(),
-        ]),
-        columnWidths: [220, 110, 110, 110],
+        widths: [65, 45, 100, 120, 45, 45, 92],
     });
 
     doc.moveDown(1.5);
-
-    for (const branch of branchSummary) {
-        if (doc.y > 650) {
-            doc.addPage();
-        }
-
-        doc.fontSize(11)
-            .font('Helvetica-Bold')
-            .fillColor(COLORS.text)
-            .text(`Sucursal: ${branch.branchName}`, 50, doc.y);
-        doc.moveDown(0.6);
-
-        drawProfessionalTable(doc, {
-            headers: ['Turno', 'Transacciones', 'Puntos', 'Sellos'],
-            rows: branch.shifts.map(shift => [
-                shift.shiftName,
-                shift.transactions.toLocaleString(),
-                shift.points.toLocaleString(),
-                shift.stamps.toLocaleString(),
-            ]),
-            columnWidths: [200, 120, 120, 120],
-        });
-
-        doc.moveDown(1.2);
-    }
 }
 
-/**
- * Add redemptions section
- */
-function addRedemptionSection(doc: PDFKit.PDFDocument, redemptionSummary: RedemptionSummary): void {
-    doc.addPage();
-
-    addSectionTitle(doc, 'CANJES DE RECOMPENSAS');
-
-    // Summary box
-    const boxX = 50;
-    const boxY = doc.y;
-    const boxWidth = doc.page.width - 100;
-    const boxHeight = 90;
-
-    doc.rect(boxX + 2, boxY + 2, boxWidth, boxHeight).fill('#00000010');
-    doc.rect(boxX, boxY, boxWidth, boxHeight)
-        .fill(COLORS.background)
-        .stroke(COLORS.border);
-
-    doc.y = boxY + 15;
-
-    const metrics = [
-        { label: 'Total Canjes', value: redemptionSummary.totalRedemptions.toLocaleString() },
-        { label: 'Puntos Canjeados', value: redemptionSummary.totalPointsRedeemed.toLocaleString() },
-        { label: 'Sellos Canjeados', value: redemptionSummary.totalStampsRedeemed.toLocaleString() },
-    ];
-
-    const colWidth = (boxWidth - 40) / 3;
-    const metricsY = doc.y;
-
-    metrics.forEach((metric, index) => {
-        const x = boxX + 20 + index * colWidth;
-
-        doc.fontSize(9)
-            .font('Helvetica')
-            .fillColor(COLORS.textLight)
-            .text(metric.label, x, metricsY);
-
-        doc.fontSize(18)
-            .font('Helvetica-Bold')
-            .fillColor(COLORS.accent)
-            .text(metric.value, x, metricsY + 12);
-    });
-
-    doc.y = boxY + boxHeight + 20;
-    doc.fillColor(COLORS.text);
-
-    if (redemptionSummary.redemptions.length === 0) {
-        doc.fontSize(10)
-            .font('Helvetica')
-            .fillColor(COLORS.textLight)
-            .text('No se realizaron canjes en el período seleccionado.', 50, doc.y);
-        doc.moveDown(1);
-        return;
-    }
-
-    drawProfessionalTable(doc, {
-        headers: ['Fecha/Hora', 'Cliente', 'Recompensa', 'Puntos', 'Sellos', 'Sucursal'],
-        rows: redemptionSummary.redemptions.map(r => [
-            `${r.date}\n${r.time}`,
-            r.clientName,
-            r.rewardName,
-            r.pointsRedeemed > 0 ? r.pointsRedeemed.toLocaleString() : '-',
-            r.stampsRedeemed > 0 ? r.stampsRedeemed.toLocaleString() : '-',
-            r.branchName,
-        ]),
-        columnWidths: [90, 105, 135, 55, 55, 120],
-    });
-
-    doc.moveDown(2);
-}
-
-/**
- * Add daily breakdown section
- */
-function addDailyBreakdown(doc: PDFKit.PDFDocument, dailyData: DailyReport[]): void {
-    // New page for daily details
-    doc.addPage();
-
-    addSectionTitle(doc, 'DETALLE DIARIO DE TRANSACCIONES');
-    doc.moveDown(1);
+// ─── 7. Daily detail ──────────────────────────────────────────────────────────
+function addDailySection(
+    doc: PDFKit.PDFDocument,
+    dailyData: DailyReport[],
+    hasPoints: boolean,
+    hasStamps: boolean,
+): void {
+    addSectionTitle(doc, 'DETALLE DIARIO');
 
     for (const day of dailyData) {
-        // Check if we need a new page
-        if (doc.y > 680) {
-            doc.addPage();
-        }
+        needSpace(doc, 80);
 
-        // Day header with background
-        const dayHeaderY = doc.y;
-        const dayHeaderHeight = 35;
+        // Day header bar
+        const barY = doc.y;
+        doc.rect(MARGIN, barY, CONTENT_W, 26).fill(C.secondary);
 
-        doc.rect(50, dayHeaderY, doc.page.width - 100, dayHeaderHeight)
-            .fill(COLORS.secondary)
-            .stroke(COLORS.border);
-
-        doc.fontSize(12)
-            .font('Helvetica-Bold')
-            .fillColor(COLORS.white)
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(C.white)
             .text(
-                `${formatDate(day.date)} - ${capitalizeFirst(day.dayOfWeek)}`,
-                60,
-                dayHeaderY + 10
+                `${fmtDate(day.date)}  —  ${capitalise(day.dayOfWeek)}`,
+                MARGIN + 10, barY + 7,
             );
 
-        // Day totals on the right
-        doc.fontSize(10)
-            .font('Helvetica')
-            .text(
-                `${day.dailyTotal.transactions} transacciones | ${day.dailyTotal.points} pts | ${day.dailyTotal.stamps} sellos`,
-                doc.page.width - 350,
-                dayHeaderY + 12,
-                { width: 280, align: 'right' }
-            );
+        // Day totals (right side of bar)
+        const totalsText = buildTotalsText(day.dailyTotal, hasPoints, hasStamps);
+        doc.fontSize(9).font('Helvetica').fillColor('#BFDBFE')
+            .text(totalsText, MARGIN, barY + 9, { width: CONTENT_W - 10, align: 'right' });
 
-        doc.y = dayHeaderY + dayHeaderHeight + 10;
-        doc.fillColor(COLORS.text);
+        doc.y = barY + 26 + 6;
+        doc.fillColor(C.text);
 
-        // Shifts for this day
-        for (const shift of day.shifts) {
-            addShiftDetailBox(doc, shift);
-        }
-
-        doc.moveDown(1.5);
-    }
-}
-
-/**
- * Add shift detail in a styled box
- */
-function addShiftDetailBox(doc: PDFKit.PDFDocument, shift: ShiftSummary): void {
-    if (doc.y > 700) {
-        doc.addPage();
-    }
-
-    const boxX = 70;
-    const boxWidth = doc.page.width - 140;
-    const startY = doc.y;
-
-    // Shift header with color indicator
-    const headerHeight = 25;
-
-    // Color indicator bar
-    doc.rect(boxX, startY, 5, headerHeight)
-        .fill(shift.shiftColor);
-
-    // Shift name and time
-    doc.fontSize(11)
-        .font('Helvetica-Bold')
-        .fillColor(COLORS.text)
-        .text(`${shift.shiftName}`, boxX + 15, startY + 5);
-
-    doc.fontSize(9)
-        .font('Helvetica')
-        .fillColor(COLORS.textLight)
-        .text(shift.shiftTime, boxX + 15, startY + 18);
-
-    // Shift metrics on the right
-    doc.fontSize(9)
-        .fillColor(COLORS.textLight)
-        .text(
-            `${shift.totalTransactions} trans. | ${shift.totalPoints} pts | ${shift.totalStamps} sellos`,
-            doc.page.width - 250,
-            startY + 8,
-            { width: 180, align: 'right' }
-        );
-
-    doc.y = startY + headerHeight + 5;
-
-    // System breakdown
-    if (shift.systemBreakdown.length > 0) {
-        shift.systemBreakdown.forEach(system => {
-            doc.fontSize(8)
-                .font('Helvetica')
-                .fillColor(COLORS.textLight)
-                .text(
-                    `  • ${system.systemName}: ${system.transactions} transacciones ` +
-                    `(${system.systemType === 'points' ? system.points + ' pts' : system.stamps + ' sellos'})`,
-                    boxX + 15,
-                    doc.y
-                );
-            doc.moveDown(0.3);
+        // Per-shift rows as a compact table
+        const shiftCols = buildShiftColumns(hasPoints, hasStamps);
+        drawTable(doc, {
+            headers: shiftCols.headers,
+            rows: day.shifts.map(s => shiftCols.row({
+                shiftName:         s.shiftName,
+                transactions:      s.totalTransactions,
+                totalTransactions: s.totalTransactions,
+                totalPoints:       s.totalPoints,
+                totalStamps:       s.totalStamps,
+            })),
+            widths: shiftCols.widths,
+            compact: true,
         });
+
+        doc.moveDown(1);
     }
-
-    // Bottom border
-    doc.strokeColor(COLORS.border)
-        .lineWidth(0.5)
-        .moveTo(boxX, doc.y + 5)
-        .lineTo(boxX + boxWidth, doc.y + 5)
-        .stroke();
-
-    doc.moveDown(0.8);
-    doc.fillColor(COLORS.text);
 }
 
-/**
- * Add section title with underline
- */
-function addSectionTitle(doc: PDFKit.PDFDocument, title: string): void {
-    doc.fontSize(13)
-        .font('Helvetica-Bold')
-        .fillColor(COLORS.primary)
-        .text(title, 50, doc.y);
-
-    const titleWidth = doc.widthOfString(title);
-    const lineY = doc.y + 2;
-
-    doc.strokeColor(COLORS.primary)
-        .lineWidth(2)
-        .moveTo(50, lineY)
-        .lineTo(50 + titleWidth, lineY)
-        .stroke();
-
-    doc.moveDown(1);
-    doc.fillColor(COLORS.text);
-}
-
-/**
- * Draw a professional table with borders and shading
- */
-function drawProfessionalTable(
+// ─── Table renderer ───────────────────────────────────────────────────────────
+function drawTable(
     doc: PDFKit.PDFDocument,
     config: {
         headers: string[];
         rows: string[][];
-        columnWidths: number[];
-    }
+        widths: number[];
+        compact?: boolean;
+    },
 ): void {
-    const startX = 50;
-    const rowHeight = 25;
-    const headerHeight = 30;
-    const pageBottom = doc.page.height - 60;
-
-    // Calculate total width
-    const totalWidth = config.columnWidths.reduce((a, b) => a + b, 0);
+    const { headers, rows, widths, compact = false } = config;
+    const rowH    = compact ? 20 : 25;
+    const headerH = compact ? 22 : 28;
+    const startX  = MARGIN;
+    const totalW  = widths.reduce((a, b) => a + b, 0);
 
     const drawHeader = (y: number) => {
-        doc.rect(startX, y, totalWidth, headerHeight)
-            .fill(COLORS.primary);
-
-        doc.fontSize(10)
-            .font('Helvetica-Bold')
-            .fillColor(COLORS.white);
-
+        doc.rect(startX, y, totalW, headerH).fill(C.primary);
+        doc.fontSize(compact ? 8 : 9).font('Helvetica-Bold').fillColor(C.white);
         let x = startX;
-        config.headers.forEach((header, i) => {
-            doc.text(
-                header,
-                x + 10,
-                y + 10,
-                { width: config.columnWidths[i] - 20, align: 'left' }
-            );
-            x += config.columnWidths[i];
+        headers.forEach((h, i) => {
+            doc.text(h, x + 6, y + (compact ? 7 : 10), { width: widths[i] - 12, align: i > 0 ? 'right' : 'left' });
+            x += widths[i];
         });
     };
 
-    const drawBorders = (yStart: number, yEnd: number) => {
-        doc.strokeColor(COLORS.border).lineWidth(0.5);
-
+    const drawBorder = (y1: number, y2: number) => {
+        doc.rect(startX, y1, totalW, y2 - y1).stroke(C.border).lineWidth(0.5);
         let x = startX;
-        config.columnWidths.forEach((width, i) => {
+        widths.forEach((w, i) => {
             if (i > 0) {
-                doc.moveTo(x, yStart)
-                    .lineTo(x, yEnd)
-                    .stroke();
+                doc.strokeColor(C.border).lineWidth(0.5)
+                    .moveTo(x, y1).lineTo(x, y2).stroke();
             }
-            x += width;
+            x += w;
         });
-
-        doc.rect(startX, yStart, totalWidth, yEnd - yStart)
-            .stroke();
     };
 
-    let segmentStartY = doc.y;
-    drawHeader(segmentStartY);
+    let segY = doc.y;
+    drawHeader(segY);
+    let curY = segY + headerH;
 
-    doc.font('Helvetica').fontSize(9).fillColor(COLORS.text);
-    let currentY = segmentStartY + headerHeight;
+    doc.fontSize(compact ? 8 : 9).font('Helvetica').fillColor(C.text);
 
-    config.rows.forEach((row, rowIndex) => {
-        if (currentY + rowHeight > pageBottom) {
-            drawBorders(segmentStartY, currentY);
+    rows.forEach((row, idx) => {
+        // Page break mid-table
+        if (curY + rowH > SAFE_BOTTOM) {
+            drawBorder(segY, curY);
             doc.addPage();
-            segmentStartY = doc.y;
-            drawHeader(segmentStartY);
-            currentY = segmentStartY + headerHeight;
+            segY = doc.y;
+            drawHeader(segY);
+            curY = segY + headerH;
         }
 
-        if (rowIndex % 2 === 0) {
-            doc.rect(startX, currentY, totalWidth, rowHeight)
-                .fill(COLORS.background);
+        // Alternating row bg
+        if (idx % 2 === 0) {
+            doc.rect(startX, curY, totalW, rowH).fill(C.bg);
         }
 
         let x = startX;
-        row.forEach((cell, colIndex) => {
-            const isNumeric = colIndex > 0;
-            doc.fillColor(COLORS.text)
-                .text(
-                    cell,
-                    x + 10,
-                    currentY + 8,
-                    {
-                        width: config.columnWidths[colIndex] - 20,
-                        align: isNumeric ? 'right' : 'left',
-                    }
-                );
-            x += config.columnWidths[colIndex];
+        row.forEach((cell, ci) => {
+            doc.fillColor(C.text)
+                .text(cell, x + 6, curY + (compact ? 5 : 8), {
+                    width: widths[ci] - 12,
+                    align: ci > 0 ? 'right' : 'left',
+                    lineBreak: false,
+                });
+            x += widths[ci];
         });
 
-        currentY += rowHeight;
+        curY += rowH;
     });
 
-    drawBorders(segmentStartY, currentY);
-    doc.y = currentY + 5;
+    drawBorder(segY, curY);
+    doc.y = curY + 6;
 }
 
-/**
- * Add footer with generation info
- */
+// ─── Footer ───────────────────────────────────────────────────────────────────
 function addFooter(doc: PDFKit.PDFDocument, generatedAt: Date): void {
     const range = doc.bufferedPageRange();
-    const pageCount = range.count;
+    const lastPage = range.start + range.count - 1;
 
-    for (let pageNum = range.start; pageNum < range.start + pageCount; pageNum++) {
+    for (let p = range.start; p <= lastPage; p++) {
         try {
-            doc.switchToPage(pageNum);
+            doc.switchToPage(p);
+            const fy = PAGE_H - FOOTER_H + 5;
 
-            const footerY = doc.page.height - 40;
+            doc.strokeColor(C.border).lineWidth(0.5)
+                .moveTo(MARGIN, fy - 5).lineTo(PAGE_W - MARGIN, fy - 5).stroke();
 
-            // Footer line
-            doc.strokeColor(COLORS.border)
-                .lineWidth(0.5)
-                .moveTo(50, footerY - 10)
-                .lineTo(doc.page.width - 50, footerY - 10)
-                .stroke();
-
-            // Footer text
-            doc.fontSize(8)
-                .font('Helvetica')
-                .fillColor(COLORS.textLight)
-                .text(
-                    `Generado el ${formatDateTime(generatedAt)}`,
-                    50,
-                    footerY,
-                    { width: 200, align: 'left' }
-                );
+            doc.fontSize(8).font('Helvetica').fillColor(C.textLight)
+                .text(`Generado el ${fmtDateTime(generatedAt)}`, MARGIN, fy, { width: 220, align: 'left' });
 
             doc.text(
-                `Página ${pageNum - range.start + 1} de ${pageCount}`,
-                doc.page.width - 150,
-                footerY,
-                { width: 100, align: 'right' }
+                `Página ${p - range.start + 1} de ${range.count}`,
+                PAGE_W - MARGIN - 100, fy,
+                { width: 100, align: 'right' },
             );
-        } catch (err) {
-            console.error(`[addFooter] Error on page ${pageNum}:`, err);
-        }
+        } catch { /* skip */ }
     }
 
-    doc.fillColor(COLORS.text);
+    // Leave cursor on the last page so PDFKit doesn't create a phantom blank page
+    doc.switchToPage(lastPage);
 }
 
-/**
- * Format currency with a generic locale fallback
- */
+// ─── Section title ────────────────────────────────────────────────────────────
+function addSectionTitle(doc: PDFKit.PDFDocument, title: string): void {
+    doc.fontSize(12).font('Helvetica-Bold').fillColor(C.primary)
+        .text(title, MARGIN, doc.y);
 
-/**
- * Format date as DD/MM/YYYY
- */
-function formatDate(date: Date): string {
+    const w = doc.widthOfString(title);
+    const ly = doc.y + 1;
+    doc.strokeColor(C.primary).lineWidth(2)
+        .moveTo(MARGIN, ly).lineTo(MARGIN + w, ly).stroke();
+
+    doc.moveDown(0.8);
+    doc.fillColor(C.text);
+}
+
+// ─── needSpace: add page if not enough vertical room ──────────────────────────
+function needSpace(doc: PDFKit.PDFDocument, height: number): void {
+    if (doc.y + height > SAFE_BOTTOM) {
+        doc.addPage();
+    }
+}
+
+// ─── Column config helpers ────────────────────────────────────────────────────
+function buildShiftColumns(hasPoints: boolean, hasStamps: boolean) {
+    const headers = ['Turno', 'Transacciones'];
+    const widths  = [200, 110];
+
+    if (hasPoints)  { headers.push('Puntos');  widths.push(100); }
+    if (hasStamps)  { headers.push('Sellos');  widths.push(100); }
+
+    // Pad to CONTENT_W
+    const used = widths.reduce((a, b) => a + b, 0);
+    if (used < CONTENT_W) widths[0] += CONTENT_W - used;
+
+    // Accepts both periodSummary rows (points/stamps) and ShiftSummary (totalPoints/totalStamps)
+    const row = (s: { shiftName: string; transactions: number; points?: number; stamps?: number; totalPoints?: number; totalStamps?: number; totalTransactions?: number }) => {
+        const txns   = s.totalTransactions ?? s.transactions;
+        const pts    = s.totalPoints  ?? s.points  ?? 0;
+        const stmps  = s.totalStamps  ?? s.stamps  ?? 0;
+        const cells  = [s.shiftName, fmt(txns)];
+        if (hasPoints) cells.push(fmt(pts));
+        if (hasStamps) cells.push(fmt(stmps));
+        return cells;
+    };
+
+    return { headers, widths, row };
+}
+
+function buildBranchHeaders(hasPoints: boolean, hasStamps: boolean): string[] {
+    const h = ['Sucursal', 'Transacciones'];
+    if (hasPoints) h.push('Puntos');
+    if (hasStamps) h.push('Sellos');
+    return h;
+}
+
+function buildBranchWidths(hasPoints: boolean, hasStamps: boolean): number[] {
+    const w = [220, 110];
+    if (hasPoints) w.push(100);
+    if (hasStamps) w.push(100);
+    const used = w.reduce((a, b) => a + b, 0);
+    if (used < CONTENT_W) w[0] += CONTENT_W - used;
+    return w;
+}
+
+function buildBranchRow(
+    b: ReportData['branchSummary'][0],
+    hasPoints: boolean,
+    hasStamps: boolean,
+): string[] {
+    const cells = [b.branchName, fmt(b.totals.transactions)];
+    if (hasPoints) cells.push(fmt(b.totals.points));
+    if (hasStamps) cells.push(fmt(b.totals.stamps));
+    return cells;
+}
+
+function buildTotalsText(
+    totals: { transactions: number; points: number; stamps: number },
+    hasPoints: boolean,
+    hasStamps: boolean,
+): string {
+    const parts = [`${totals.transactions} trans.`];
+    if (hasPoints && totals.points !== 0) parts.push(`${fmt(totals.points)} pts`);
+    if (hasStamps && totals.stamps !== 0) parts.push(`${fmt(totals.stamps)} sellos`);
+    return parts.join('  |  ');
+}
+
+// ─── Formatters ───────────────────────────────────────────────────────────────
+function fmt(n: number): string {
+    return n.toLocaleString('es-MX');
+}
+
+function fmtCurrency(n: number): string {
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n);
+}
+
+function fmtDate(date: Date): string {
     const d = new Date(date);
-    const day = d.getDate().toString().padStart(2, '0');
-    const month = (d.getMonth() + 1).toString().padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-/**
- * Format date and time
- */
-function formatDateTime(date: Date): string {
-    const d = new Date(date);
-    const dateStr = formatDate(d);
-    const hours = d.getHours().toString().padStart(2, '0');
-    const minutes = d.getMinutes().toString().padStart(2, '0');
-    return `${dateStr} a las ${hours}:${minutes}`;
+function fmtDateTime(date: Date): string {
+    return `${fmtDate(date)} a las ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/**
- * Capitalize first letter
- */
-function capitalizeFirst(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
+function pad(n: number): string {
+    return n.toString().padStart(2, '0');
+}
+
+function capitalise(s: string): string {
+    return s.charAt(0).toUpperCase() + s.slice(1);
 }
