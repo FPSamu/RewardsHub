@@ -3,6 +3,7 @@ import { Schema, model, Document, Types } from 'mongoose';
 export interface IRedemptionCode extends Document {
     code: string;
     businessId: Types.ObjectId;
+    branchId?: Types.ObjectId;
     amount: number;
     pointsEstimate: number;
     stamps: {
@@ -20,6 +21,7 @@ const redemptionCodeSchema = new Schema<IRedemptionCode>(
     {
         code: { type: String, required: true, unique: true, index: true, uppercase: true },
         businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true },
+        branchId:   { type: Schema.Types.ObjectId, ref: 'Business' },
         amount: { type: Number, default: 0 },
         pointsEstimate: { type: Number, default: 0 },
         stamps: [{

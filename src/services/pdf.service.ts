@@ -85,9 +85,10 @@ function buildDocument(
 ): void {
     const { metadata, summary, dailyData, periodSummary, branchSummary, redemptionSummary } = data;
 
-    const hasPoints    = summary.totalPoints  !== 0;
-    const hasStamps    = summary.totalStamps  !== 0;
     const hasRevenue   = summary.totalRevenue > 0;
+    // Always show both columns so businesses can see 0 when there's no activity
+    const hasPoints    = true;
+    const hasStamps    = true;
     const hasShifts    = periodSummary.totalsByShift.some(s => s.shiftName !== 'Sin turno asignado');
     const multiBranch  = branchSummary.length > 1;
     const hasRedemptions = redemptionSummary.totalRedemptions > 0;
@@ -188,9 +189,9 @@ function addKPICards(
     const cards: Array<{ label: string; value: string; color: string }> = [];
 
     cards.push({ label: 'Transacciones',     value: fmt(summary.totalTransactions), color: C.primary });
-    if (hasRevenue)  cards.push({ label: 'Monto en ventas',  value: fmtCurrency(summary.totalRevenue), color: C.accent });
-    if (hasPoints)   cards.push({ label: 'Puntos otorgados', value: fmt(summary.totalPoints),           color: C.secondary });
-    if (hasStamps)   cards.push({ label: 'Sellos otorgados', value: fmt(summary.totalStamps),           color: C.secondary });
+    if (hasRevenue) cards.push({ label: 'Monto en ventas',  value: fmtCurrency(summary.totalRevenue), color: C.accent });
+    cards.push({ label: 'Puntos otorgados', value: fmt(summary.totalPoints),  color: C.secondary });
+    cards.push({ label: 'Sellos otorgados', value: fmt(summary.totalStamps),  color: C.secondary });
     cards.push({ label: 'Días con actividad', value: summary.totalDays.toString(), color: C.textLight });
     cards.push({ label: 'Canjes realizados',  value: fmt(totalRedemptions),        color: C.textLight });
 
@@ -331,7 +332,8 @@ function addRedemptionSection(
             r.stampsRedeemed > 0 ? fmt(r.stampsRedeemed) : '-',
             r.branchName,
         ]),
-        widths: [65, 45, 100, 120, 45, 45, 92],
+        // CONTENT_W = 512 → 62+44+88+100+36+36+146 = 512
+        widths: [62, 44, 88, 100, 36, 36, 146],
     });
 
     doc.moveDown(1.5);
@@ -367,16 +369,19 @@ function addDailySection(
         doc.y = barY + 26 + 6;
         doc.fillColor(C.text);
 
-        // Per-shift rows as a compact table
-        const shiftCols = buildShiftColumns(hasPoints, hasStamps);
+        // Per-branch+shift rows as a compact table
+        const shiftCols = buildShiftColumns(hasPoints, hasStamps, true);
         drawTable(doc, {
             headers: shiftCols.headers,
             rows: day.shifts.map(s => shiftCols.row({
-                shiftName:         s.shiftName,
-                transactions:      s.totalTransactions,
-                totalTransactions: s.totalTransactions,
-                totalPoints:       s.totalPoints,
-                totalStamps:       s.totalStamps,
+                shiftName:            s.shiftName,
+                branchName:           s.branchName,
+                totalTransactions:    s.totalTransactions,
+                totalPoints:          s.totalPoints,
+                totalStamps:          s.totalStamps,
+                totalRedemptions:     s.totalRedemptions,
+                totalPointsRedeemed:  s.totalPointsRedeemed,
+                totalStampsRedeemed:  s.totalStampsRedeemed,
             })),
             widths: shiftCols.widths,
             compact: true,
@@ -404,10 +409,14 @@ function drawTable(
 
     const drawHeader = (y: number) => {
         doc.rect(startX, y, totalW, headerH).fill(C.primary);
-        doc.fontSize(compact ? 8 : 9).font('Helvetica-Bold').fillColor(C.white);
+        doc.fontSize(compact ? 7 : 9).font('Helvetica-Bold').fillColor(C.white);
         let x = startX;
         headers.forEach((h, i) => {
-            doc.text(h, x + 6, y + (compact ? 7 : 10), { width: widths[i] - 12, align: i > 0 ? 'right' : 'left' });
+            doc.text(h, x + 4, y + (compact ? 7 : 10), {
+                width: widths[i] - 8,
+                align: i > 0 ? 'right' : 'left',
+                lineBreak: false,
+            });
             x += widths[i];
         });
     };
@@ -513,23 +522,61 @@ function needSpace(doc: PDFKit.PDFDocument, height: number): void {
 }
 
 // ─── Column config helpers ────────────────────────────────────────────────────
-function buildShiftColumns(hasPoints: boolean, hasStamps: boolean) {
-    const headers = ['Turno', 'Transacciones'];
-    const widths  = [200, 110];
+function buildShiftColumns(hasPoints: boolean, hasStamps: boolean, withBranch = false) {
+    const headers: string[] = [];
+    const widths:  number[] = [];
 
-    if (hasPoints)  { headers.push('Puntos');  widths.push(100); }
-    if (hasStamps)  { headers.push('Sellos');  widths.push(100); }
+    if (withBranch) {
+        // Daily detail: Sucursal | Turno | Trans. | Pts | Sellos | Canjes | Pts Cnj. | Sellos Cnj.
+        // CONTENT_W = 512 → 130+100+44+44+44+44+52+54 = 512
+        headers.push('Sucursal', 'Turno', 'Trans.', 'Pts', 'Sellos', 'Canjes', 'Pts Cnj.', 'Sel. Cnj.');
+        widths.push (130,         100,     44,        44,    44,       44,        52,          54);
+    } else {
+        // Period / branch summary: Turno | Transacciones | Puntos | Sellos
+        headers.push('Turno', 'Transacciones');
+        widths.push(200, 110);
+        if (hasPoints) { headers.push('Puntos'); widths.push(100); }
+        if (hasStamps) { headers.push('Sellos'); widths.push(100); }
+    }
 
-    // Pad to CONTENT_W
+    // Pad remaining space to first column
     const used = widths.reduce((a, b) => a + b, 0);
     if (used < CONTENT_W) widths[0] += CONTENT_W - used;
 
-    // Accepts both periodSummary rows (points/stamps) and ShiftSummary (totalPoints/totalStamps)
-    const row = (s: { shiftName: string; transactions: number; points?: number; stamps?: number; totalPoints?: number; totalStamps?: number; totalTransactions?: number }) => {
-        const txns   = s.totalTransactions ?? s.transactions;
-        const pts    = s.totalPoints  ?? s.points  ?? 0;
-        const stmps  = s.totalStamps  ?? s.stamps  ?? 0;
-        const cells  = [s.shiftName, fmt(txns)];
+    const row = (s: {
+        shiftName: string;
+        branchName?: string;
+        transactions?: number;
+        points?: number;
+        stamps?: number;
+        totalPoints?: number;
+        totalStamps?: number;
+        totalTransactions?: number;
+        totalRedemptions?: number;
+        totalPointsRedeemed?: number;
+        totalStampsRedeemed?: number;
+    }) => {
+        const txns    = s.totalTransactions  ?? s.transactions ?? 0;
+        const pts     = s.totalPoints   ?? s.points  ?? 0;
+        const stmps   = s.totalStamps   ?? s.stamps  ?? 0;
+        const canjes  = s.totalRedemptions    ?? 0;
+        const ptsR    = s.totalPointsRedeemed ?? 0;
+        const stmpsR  = s.totalStampsRedeemed ?? 0;
+
+        if (withBranch) {
+            return [
+                s.branchName ?? '-',
+                s.shiftName,
+                fmt(txns),
+                fmt(pts),
+                fmt(stmps),
+                canjes > 0 ? fmt(canjes)  : '-',
+                ptsR   > 0 ? fmt(ptsR)   : '-',
+                stmpsR > 0 ? fmt(stmpsR) : '-',
+            ];
+        }
+
+        const cells = [s.shiftName, fmt(txns)];
         if (hasPoints) cells.push(fmt(pts));
         if (hasStamps) cells.push(fmt(stmps));
         return cells;
@@ -546,7 +593,8 @@ function buildBranchHeaders(hasPoints: boolean, hasStamps: boolean): string[] {
 }
 
 function buildBranchWidths(hasPoints: boolean, hasStamps: boolean): number[] {
-    const w = [220, 110];
+    // Base widths sized so 4 columns (name + txns + pts + sellos) always fit in CONTENT_W
+    const w = [190, 100];
     if (hasPoints) w.push(100);
     if (hasStamps) w.push(100);
     const used = w.reduce((a, b) => a + b, 0);

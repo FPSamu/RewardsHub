@@ -16,7 +16,7 @@ const generateUniqueCode = (): string => {
 export const generateCode = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const businessId = req.business!.id;
-        const { amount, stamps } = req.body; 
+        const { amount, stamps, branchId } = req.body;
 
         const purchaseAmount = amount ? parseFloat(amount) : 0;
         const stampsData = Array.isArray(stamps) ? stamps : [];
@@ -66,9 +66,10 @@ export const generateCode = async (req: Request, res: Response, next: NextFuncti
         const redemption = await RedemptionCodeModel.create({
             code,
             businessId,
+            ...(branchId && { branchId: new Types.ObjectId(branchId) }),
             amount: purchaseAmount,
             pointsEstimate: points,
-            stamps: validStamps, 
+            stamps: validStamps,
             expiresAt: expirationDate
         });
 
@@ -162,7 +163,7 @@ export const claimCode = async (req: Request, res: Response, next: NextFunction)
         await transactionService.createTransaction(
             userId,
             redemption.businessId.toString(),
-            undefined,
+            redemption.branchId?.toString(),
             business ? business.username : 'Unknown Business',
             'add',
             transactionItemsForService,
