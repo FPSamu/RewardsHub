@@ -96,7 +96,7 @@ function buildDocument(
     addHeader(doc, metadata, logo);
 
     // 2. KPI cards
-    addKPICards(doc, summary, hasPoints, hasStamps, hasRevenue);
+    addKPICards(doc, summary, redemptionSummary.totalRedemptions, hasPoints, hasStamps, hasRevenue);
 
     // 3. Insights row
     addInsights(doc, data, hasShifts);
@@ -180,6 +180,7 @@ function addHeader(
 function addKPICards(
     doc: PDFKit.PDFDocument,
     summary: ReportData['summary'],
+    totalRedemptions: number,
     hasPoints: boolean,
     hasStamps: boolean,
     hasRevenue: boolean,
@@ -187,11 +188,11 @@ function addKPICards(
     const cards: Array<{ label: string; value: string; color: string }> = [];
 
     cards.push({ label: 'Transacciones',     value: fmt(summary.totalTransactions), color: C.primary });
-    if (hasRevenue)  cards.push({ label: 'Monto en ventas', value: fmtCurrency(summary.totalRevenue), color: C.accent });
-    if (hasPoints)   cards.push({ label: 'Puntos otorgados', value: fmt(summary.totalPoints), color: C.secondary });
-    if (hasStamps)   cards.push({ label: 'Sellos otorgados', value: fmt(summary.totalStamps), color: C.secondary });
+    if (hasRevenue)  cards.push({ label: 'Monto en ventas',  value: fmtCurrency(summary.totalRevenue), color: C.accent });
+    if (hasPoints)   cards.push({ label: 'Puntos otorgados', value: fmt(summary.totalPoints),           color: C.secondary });
+    if (hasStamps)   cards.push({ label: 'Sellos otorgados', value: fmt(summary.totalStamps),           color: C.secondary });
     cards.push({ label: 'Días con actividad', value: summary.totalDays.toString(), color: C.textLight });
-    cards.push({ label: 'Canjes realizados',  value: fmt(summary.unassignedTransactions === summary.totalTransactions ? 0 : summary.totalTransactions), color: C.textLight });
+    cards.push({ label: 'Canjes realizados',  value: fmt(totalRedemptions),        color: C.textLight });
 
     // Up to 3 per row
     const cols   = Math.min(cards.length, 3);
@@ -586,7 +587,7 @@ function fmtCurrency(n: number): string {
 
 function fmtDate(date: Date): string {
     const d = new Date(date);
-    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+    return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
 }
 
 function fmtDateTime(date: Date): string {

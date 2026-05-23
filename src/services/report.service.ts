@@ -19,6 +19,7 @@ export interface ReportFilters {
     endDate: Date;
     shiftIds?: string[];  // Optional: filter by specific shifts
     types?: TransactionType[]; // Optional: filter by transaction types
+    timezone?: string;   // IANA timezone for grouping and display (default: 'UTC')
 }
 
 /**
@@ -111,6 +112,7 @@ export interface ReportData {
         businessName: string;
         logoUrl?: string;
         generatedAt: Date;
+        timezone: string;
         reportPeriod: {
             startDate: Date;
             endDate: Date;
@@ -167,6 +169,7 @@ export interface ReportData {
  */
 export async function generateReportData(filters: ReportFilters): Promise<ReportData> {
     const { businessId, startDate, endDate, shiftIds } = filters;
+    const timezone = filters.timezone || 'UTC';
 
     // Build query
     const query: any = {
@@ -197,8 +200,8 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
     const allShifts = await WorkShiftModel.find({ businessId: new Types.ObjectId(businessId) }).exec();
     const shiftsMap = new Map(allShifts.map(s => [s._id.toString(), s]));
 
-    // Group transactions by day
-    const transactionsByDay = groupTransactionsByDay(transactions);
+    // Group transactions by day using the business timezone
+    const transactionsByDay = groupTransactionsByDay(transactions, timezone);
 
     // Build daily reports
     const dailyData: DailyReport[] = [];
@@ -209,8 +212,9 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
     let unassignedTransactions = 0;
 
     for (const [dateStr, dayTransactions] of transactionsByDay) {
-        const date = new Date(dateStr);
-        const dayOfWeek = date.toLocaleDateString('es-ES', { weekday: 'long' });
+        // Use noon UTC to create a Date that survives any timezone conversion without shifting the day
+        const date = new Date(dateStr + 'T12:00:00.000Z');
+        const dayOfWeek = date.toLocaleDateString('es-ES', { weekday: 'long', timeZone: timezone });
 
         // Group by shift
         const shiftGroups = groupTransactionsByShift(dayTransactions, shiftsMap);
@@ -223,7 +227,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
         const shifts: ShiftSummary[] = [];
 
         for (const [shiftKey, shiftTransactions] of shiftGroups) {
-            const shiftSummary = buildShiftSummary(shiftKey, shiftTransactions, shiftsMap);
+            const shiftSummary = buildShiftSummary(shiftKey, shiftTransactions, shiftsMap, timezone);
             shifts.push(shiftSummary);
 
             dayTotalTransactions += shiftSummary.totalTransactions;
@@ -268,7 +272,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
     const totalsByShift = calculateTotalsByShift(dailyData);
     const totalsBySystem = calculateTotalsBySystem(transactions);
     const branchSummary = buildBranchSummary(transactions, shiftsMap, branchNameById);
-    const redemptionSummary = buildRedemptionSummary(transactions, branchNameById);
+    const redemptionSummary = buildRedemptionSummary(transactions, branchNameById, timezone);
 
     return {
         metadata: {
@@ -276,6 +280,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
             businessName,
             logoUrl,
             generatedAt: new Date(),
+            timezone,
             reportPeriod: {
                 startDate,
                 endDate,
@@ -300,13 +305,23 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
 }
 
 /**
- * Group transactions by day (YYYY-MM-DD)
+ * Group transactions by local day (YYYY-MM-DD) in the given IANA timezone.
+ * Using the business timezone ensures a transaction at e.g. 19:00 UTC maps to
+ * the correct local date instead of always using UTC midnight as the boundary.
  */
-function groupTransactionsByDay(transactions: any[]): Map<string, any[]> {
+function groupTransactionsByDay(transactions: any[], timezone: string): Map<string, any[]> {
     const groups = new Map<string, any[]>();
 
+    // en-CA locale produces YYYY-MM-DD format natively
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
+
     for (const transaction of transactions) {
-        const dateStr = transaction.createdAt.toISOString().split('T')[0];
+        const dateStr = formatter.format(transaction.createdAt);
         if (!groups.has(dateStr)) {
             groups.set(dateStr, []);
         }
@@ -339,13 +354,14 @@ function groupTransactionsByShift(transactions: any[], shiftsMap: Map<string, an
 function buildShiftSummary(
     shiftKey: string,
     transactions: any[],
-    shiftsMap: Map<string, any>
+    shiftsMap: Map<string, any>,
+    timezone: string
 ): ShiftSummary {
     const shift = shiftKey !== 'no-shift' ? shiftsMap.get(shiftKey) : null;
 
     const shiftName = shift ? shift.name : 'Sin turno asignado';
     const shiftTime = shift ? `${shift.startTime} - ${shift.endTime}` : '-';
-    const shiftColor = shift ? shift.color : '#9CA3AF';
+    const shiftColor = shift ? (shift.color ?? '#9CA3AF') : '#9CA3AF';
 
     let totalPoints = 0;
     let totalStamps = 0;
@@ -356,11 +372,12 @@ function buildShiftSummary(
         totalPoints += transaction.totalPointsChange;
         totalStamps += transaction.totalStampsChange;
 
-        // Build transaction detail
+        // Build transaction detail — format time in the business local timezone
         const time = transaction.createdAt.toLocaleTimeString('es-ES', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
+            timeZone: timezone,
         });
 
         const clientName = transaction.userId?.username || transaction.userId?.email || 'Cliente';
@@ -516,13 +533,15 @@ type BranchBucket = {
 };
 
 /**
- * Build redemption summary from transactions of type 'redeem'
+ * Build redemption summary from transactions of type 'subtract'
+ * (stamp/points redemptions are recorded as subtract, not redeem)
  */
 function buildRedemptionSummary(
     transactions: any[],
-    branchNameById: Map<string, string>
+    branchNameById: Map<string, string>,
+    timezone: string
 ): RedemptionSummary {
-    const redeemTransactions = transactions.filter(t => t.type === 'redeem');
+    const redeemTransactions = transactions.filter(t => t.type === 'subtract');
 
     let totalPointsRedeemed = 0;
     let totalStampsRedeemed = 0;
@@ -542,12 +561,14 @@ function buildRedemptionSummary(
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
+            timeZone: timezone,
         });
 
         const time = t.createdAt.toLocaleTimeString('es-ES', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
+            timeZone: timezone,
         });
 
         return {

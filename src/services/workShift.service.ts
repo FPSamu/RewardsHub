@@ -18,9 +18,9 @@ export interface PublicWorkShift {
     name: string;
     startTime: string;
     endTime: string;
-    color: string;
     description?: string;
     isActive: boolean;
+    days: number[];   // 0=Sun, 1=Mon, ..., 6=Sat. Empty = all days.
     createdAt: string;
     updatedAt: string;
 }
@@ -36,9 +36,9 @@ function toPublic(doc: IWorkShift): PublicWorkShift {
         name: doc.name,
         startTime: doc.startTime,
         endTime: doc.endTime,
-        color: doc.color,
         description: doc.description,
         isActive: doc.isActive,
+        days: doc.days ?? [],
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -51,7 +51,6 @@ function toPublic(doc: IWorkShift): PublicWorkShift {
  * @param name - Shift name
  * @param startTime - Start time in "HH:mm" format
  * @param endTime - End time in "HH:mm" format
- * @param color - Hex color for UI (optional)
  * @param description - Optional description
  * @param branchId - Optional branch ID. If provided, the shift applies only to that branch.
  * @returns The created work shift
@@ -62,8 +61,8 @@ export async function createWorkShift(
     name: string,
     startTime: string,
     endTime: string,
-    color?: string,
-    description?: string
+    description?: string,
+    days?: number[]
 ): Promise<PublicWorkShift> {
     // Validar contra otros turnos de la misma sucursal
     const existingShifts = await WorkShiftModel.find({ businessId, branchId, isActive: true });
@@ -79,9 +78,9 @@ export async function createWorkShift(
         name,
         startTime,
         endTime,
-        color: color || '#3B82F6',
         description,
         isActive: true,
+        days: days ?? [],
     });
 
     await shift.save();
@@ -165,9 +164,9 @@ export async function updateWorkShift(
         name?: string;
         startTime?: string;
         endTime?: string;
-        color?: string;
         description?: string;
         isActive?: boolean;
+        days?: number[];
     }
 ): Promise<PublicWorkShift | undefined> {
     const shift = await WorkShiftModel.findById(shiftId);
@@ -196,9 +195,9 @@ export async function updateWorkShift(
     if (updates.name !== undefined) shift.name = updates.name;
     if (updates.startTime !== undefined) shift.startTime = updates.startTime;
     if (updates.endTime !== undefined) shift.endTime = updates.endTime;
-    if (updates.color !== undefined) shift.color = updates.color;
     if (updates.description !== undefined) shift.description = updates.description;
     if (updates.isActive !== undefined) shift.isActive = updates.isActive;
+    if (updates.days !== undefined) shift.days = updates.days;
 
     await shift.save();
     return toPublic(shift);

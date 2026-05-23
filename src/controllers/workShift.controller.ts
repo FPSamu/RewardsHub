@@ -23,7 +23,7 @@ import * as workShiftService from '../services/workShift.service';
  */
 export async function createWorkShift(req: Request, res: Response) {
     try {
-        const { businessId, branchId, name, startTime, endTime, color, description } = req.body;
+        const { businessId, branchId, name, startTime, endTime, description, days } = req.body;
 
         if (!businessId || !branchId || !name || !startTime || !endTime) {
             return res.status(400).json({
@@ -38,14 +38,23 @@ export async function createWorkShift(req: Request, res: Response) {
             });
         }
 
+        // Validate days if provided
+        if (days !== undefined) {
+            if (!Array.isArray(days) || days.some((d: any) => !Number.isInteger(d) || d < 0 || d > 6)) {
+                return res.status(400).json({
+                    message: 'days must be an array of integers between 0 (Sunday) and 6 (Saturday)',
+                });
+            }
+        }
+
         const shift = await workShiftService.createWorkShift(
             businessId,
             branchId,
             name,
             startTime,
             endTime,
-            color,
-            description
+            description,
+            days
         );
 
         return res.status(201).json(shift);
@@ -179,6 +188,15 @@ export async function updateWorkShift(req: Request, res: Response) {
             return res.status(400).json({
                 message: 'Invalid endTime format. Use HH:mm format (e.g., "16:00")',
             });
+        }
+
+        // Validate days if provided
+        if (updates.days !== undefined) {
+            if (!Array.isArray(updates.days) || updates.days.some((d: any) => !Number.isInteger(d) || d < 0 || d > 6)) {
+                return res.status(400).json({
+                    message: 'days must be an array of integers between 0 (Sunday) and 6 (Saturday)',
+                });
+            }
         }
 
         const shift = await workShiftService.updateWorkShift(id, updates);
