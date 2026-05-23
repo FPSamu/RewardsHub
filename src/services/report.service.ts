@@ -30,9 +30,14 @@ export interface ShiftSummary {
     shiftName: string;
     shiftTime: string;  // e.g., "08:00 - 16:00"
     shiftColor: string;
+    branchId: string | null;
+    branchName: string;
     totalTransactions: number;
     totalPoints: number;
     totalStamps: number;
+    totalRedemptions: number;
+    totalPointsRedeemed: number;
+    totalStampsRedeemed: number;
     transactions: TransactionDetail[];
     systemBreakdown: SystemBreakdown[];
 }
@@ -190,15 +195,22 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
         query.type = { $in: filters.types };
     }
 
-    // Fetch transactions
-    const transactions = await TransactionModel.find(query)
-        .sort({ createdAt: 1 })
-        .populate('userId', 'username email')
-        .exec();
+    // Fetch transactions, shifts and business data in parallel
+    const [transactions, allShifts, business] = await Promise.all([
+        TransactionModel.find(query).sort({ createdAt: 1 }).populate('userId', 'username email').exec(),
+        WorkShiftModel.find({ businessId: new Types.ObjectId(businessId) }).exec(),
+        BusinessModel.findById(businessId).exec(),
+    ]);
 
-    // Fetch all shifts for this business (for display purposes)
-    const allShifts = await WorkShiftModel.find({ businessId: new Types.ObjectId(businessId) }).exec();
     const shiftsMap = new Map(allShifts.map(s => [s._id.toString(), s]));
+
+    // Build branch name lookup map
+    const branchNameById = new Map<string, string>();
+    if (business?.locations) {
+        for (const loc of business.locations) {
+            branchNameById.set(loc._id.toString(), loc.name || loc.formattedAddress || 'Sucursal');
+        }
+    }
 
     // Group transactions by day using the business timezone
     const transactionsByDay = groupTransactionsByDay(transactions, timezone);
@@ -227,7 +239,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
         const shifts: ShiftSummary[] = [];
 
         for (const [shiftKey, shiftTransactions] of shiftGroups) {
-            const shiftSummary = buildShiftSummary(shiftKey, shiftTransactions, shiftsMap, timezone);
+            const shiftSummary = buildShiftSummary(shiftKey, shiftTransactions, shiftsMap, timezone, branchNameById);
             shifts.push(shiftSummary);
 
             dayTotalTransactions += shiftSummary.totalTransactions;
@@ -257,16 +269,9 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
         if (!t.workShiftId) unassignedTransactions++;
     }
 
-    // Fetch business data to get name, logo, and branch names
-    const business = await BusinessModel.findById(businessId).exec();
+    // Business data already fetched above
     const businessName = business?.username || 'Business';
     const logoUrl = business?.logoUrl;
-    const branchNameById = new Map<string, string>();
-    if (business?.locations) {
-        for (const loc of business.locations) {
-            branchNameById.set(loc._id.toString(), loc.name || loc.formattedAddress || 'Sucursal');
-        }
-    }
 
     // Calculate period summaries
     const totalsByShift = calculateTotalsByShift(dailyData);
@@ -332,17 +337,21 @@ function groupTransactionsByDay(transactions: any[], timezone: string): Map<stri
 }
 
 /**
- * Group transactions by shift
+ * Group transactions by branch + shift so each row in the daily detail
+ * corresponds to one branch/shift combination.
+ * Key format: "<branchId>|<shiftId>"
  */
 function groupTransactionsByShift(transactions: any[], shiftsMap: Map<string, any>): Map<string, any[]> {
     const groups = new Map<string, any[]>();
 
     for (const transaction of transactions) {
-        const shiftKey = transaction.workShiftId?.toString() || 'no-shift';
-        if (!groups.has(shiftKey)) {
-            groups.set(shiftKey, []);
+        const shiftPart  = transaction.workShiftId?.toString() || 'no-shift';
+        const branchPart = transaction.branchId?.toString()    || 'no-branch';
+        const key = `${branchPart}|${shiftPart}`;
+        if (!groups.has(key)) {
+            groups.set(key, []);
         }
-        groups.get(shiftKey)!.push(transaction);
+        groups.get(key)!.push(transaction);
     }
 
     return groups;
@@ -352,25 +361,42 @@ function groupTransactionsByShift(transactions: any[], shiftsMap: Map<string, an
  * Build shift summary from transactions
  */
 function buildShiftSummary(
-    shiftKey: string,
+    compositeKey: string,
     transactions: any[],
     shiftsMap: Map<string, any>,
-    timezone: string
+    timezone: string,
+    branchNameById: Map<string, string>
 ): ShiftSummary {
-    const shift = shiftKey !== 'no-shift' ? shiftsMap.get(shiftKey) : null;
+    // Key format: "<branchId>|<shiftId>"
+    const [branchPart, shiftPart] = compositeKey.split('|');
+    const shift = shiftPart !== 'no-shift' ? shiftsMap.get(shiftPart) : null;
 
-    const shiftName = shift ? shift.name : 'Sin turno asignado';
-    const shiftTime = shift ? `${shift.startTime} - ${shift.endTime}` : '-';
+    const shiftName  = shift ? shift.name : 'Sin turno asignado';
+    const shiftTime  = shift ? `${shift.startTime} - ${shift.endTime}` : '-';
     const shiftColor = shift ? (shift.color ?? '#9CA3AF') : '#9CA3AF';
+
+    const branchId   = branchPart !== 'no-branch' ? branchPart : null;
+    const branchName = branchId
+        ? (branchNameById.get(branchId) || 'Sucursal')
+        : 'Pedidos a domicilio';
 
     let totalPoints = 0;
     let totalStamps = 0;
+    let totalRedemptions = 0;
+    let totalPointsRedeemed = 0;
+    let totalStampsRedeemed = 0;
     const transactionDetails: TransactionDetail[] = [];
     const systemsMap = new Map<string, { type: 'points' | 'stamps'; points: number; stamps: number; count: number }>();
 
     for (const transaction of transactions) {
-        totalPoints += transaction.totalPointsChange;
-        totalStamps += transaction.totalStampsChange;
+        if (transaction.type === 'add') {
+            totalPoints += transaction.totalPointsChange;
+            totalStamps += transaction.totalStampsChange;
+        } else if (transaction.type === 'subtract') {
+            totalRedemptions++;
+            totalPointsRedeemed += Math.abs(transaction.totalPointsChange || 0);
+            totalStampsRedeemed += Math.abs(transaction.totalStampsChange || 0);
+        }
 
         // Build transaction detail — format time in the business local timezone
         const time = transaction.createdAt.toLocaleTimeString('es-ES', {
@@ -428,9 +454,14 @@ function buildShiftSummary(
         shiftName,
         shiftTime,
         shiftColor,
+        branchId,
+        branchName,
         totalTransactions: transactions.length,
         totalPoints,
         totalStamps,
+        totalRedemptions,
+        totalPointsRedeemed,
+        totalStampsRedeemed,
         transactions: transactionDetails,
         systemBreakdown,
     };
@@ -555,7 +586,7 @@ function buildRedemptionSummary(
         const branchKey = t.branchId?.toString();
         const branchName = branchKey
             ? (branchNameById.get(branchKey) || 'Sucursal')
-            : 'Sin sucursal';
+            : 'Pedidos a domicilio';
 
         const date = t.createdAt.toLocaleDateString('es-ES', {
             day: '2-digit',
@@ -617,8 +648,11 @@ function buildBranchSummary(
 
         const bucket = branchMap.get(branchKey)!;
         bucket.totals.transactions += 1;
-        bucket.totals.points += t.totalPointsChange || 0;
-        bucket.totals.stamps += t.totalStampsChange || 0;
+        // Only count points/stamps granted — subtract transactions are redemptions
+        if (t.type === 'add') {
+            bucket.totals.points += t.totalPointsChange || 0;
+            bucket.totals.stamps += t.totalStampsChange || 0;
+        }
 
         const shiftKey = t.workShiftId ? t.workShiftId.toString() : 'no-shift';
         if (!bucket.shifts.has(shiftKey)) {
@@ -633,15 +667,17 @@ function buildBranchSummary(
         }
         const shiftBucket = bucket.shifts.get(shiftKey)!;
         shiftBucket.transactions += 1;
-        shiftBucket.points += t.totalPointsChange || 0;
-        shiftBucket.stamps += t.totalStampsChange || 0;
+        if (t.type === 'add') {
+            shiftBucket.points += t.totalPointsChange || 0;
+            shiftBucket.stamps += t.totalStampsChange || 0;
+        }
     }
 
     return Array.from(branchMap.entries()).map(([branchKey, data]) => {
         const shifts = Array.from(data.shifts.values());
         const branchName =
             branchKey === 'no-branch'
-                ? 'Sin sucursal asignada'
+                ? 'Pedidos a domicilio'
                 : branchNameById.get(branchKey) || 'Sucursal';
         return {
             branchId: data.branchId,
