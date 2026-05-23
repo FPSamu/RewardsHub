@@ -17,9 +17,9 @@ export interface IWorkShift extends Document {
     name: string;                       // Shift name (e.g., "Turno Matutino")
     startTime: string;                  // Start time in "HH:mm" format (e.g., "08:00")
     endTime: string;                    // End time in "HH:mm" format (e.g., "16:00")
-    color: string;                      // Hex color for UI (e.g., "#FFD700")
     description?: string;               // Optional description
     isActive: boolean;                  // Whether the shift is active
+    days: number[];                     // Days of the week this shift applies to (0=Sun, 1=Mon, ..., 6=Sat). Empty = all days.
     createdAt: Date;
     updatedAt: Date;
 }
@@ -65,17 +65,6 @@ const workShiftSchema = new Schema<IWorkShift>(
                 message: 'endTime must be in HH:mm format (e.g., "16:00")'
             }
         },
-        color: {
-            type: String,
-            default: '#3B82F6',
-            validate: {
-                validator: function (v: string) {
-                    // Validate hex color format
-                    return /^#[0-9A-F]{6}$/i.test(v);
-                },
-                message: 'color must be a valid hex color (e.g., "#FFD700")'
-            }
-        },
         description: {
             type: String,
             trim: true
@@ -83,6 +72,16 @@ const workShiftSchema = new Schema<IWorkShift>(
         isActive: {
             type: Boolean,
             default: true
+        },
+        days: {
+            type: [Number],
+            default: [],
+            validate: {
+                validator: function (v: number[]) {
+                    return v.every(d => Number.isInteger(d) && d >= 0 && d <= 6);
+                },
+                message: 'days must contain values between 0 (Sunday) and 6 (Saturday)'
+            }
         }
     },
     { timestamps: true }

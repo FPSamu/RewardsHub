@@ -28,7 +28,7 @@ export async function generateReport(req: Request, res: Response) {
             return res.status(401).json({ message: 'Authentication required' });
         }
 
-        const { startDate, endDate, shiftIds, types } = req.body;
+        const { startDate, endDate, shiftIds, types, timezone } = req.body;
 
         // Validate required fields
         if (!startDate || !endDate) {
@@ -37,11 +37,22 @@ export async function generateReport(req: Request, res: Response) {
             });
         }
 
-        // Parse dates (support YYYY-MM-DD as local date)
+        // Resolve timezone — validate it is a recognised IANA name, fall back to UTC
+        const resolvedTimezone = (() => {
+            if (!timezone) return 'UTC';
+            try {
+                Intl.DateTimeFormat(undefined, { timeZone: timezone });
+                return timezone as string;
+            } catch {
+                return 'UTC';
+            }
+        })();
+
+        // Parse YYYY-MM-DD as UTC midnight so the query boundary is timezone-independent.
+        // The business timezone is applied later when grouping/displaying transactions.
         const parseInputDate = (value: string): Date => {
             if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-                const [y, m, d] = value.split('-').map(Number);
-                return new Date(y, m - 1, d);
+                return new Date(value + 'T00:00:00.000Z');
             }
             return new Date(value);
         };
@@ -71,11 +82,11 @@ export async function generateReport(req: Request, res: Response) {
         }
 
         console.log(`[generateReport] Generating report for business ${businessId}`);
-        console.log(`[generateReport] Date range: ${startDate} to ${endDate}`);
+        console.log(`[generateReport] Date range: ${startDate} to ${endDate} (tz: ${resolvedTimezone})`);
         console.log(`[generateReport] Shift filter:`, shiftIds || 'All shifts');
 
-        // Set end date to end of day
-        end.setHours(23, 59, 59, 999);
+        // Set end date to end of day in UTC (covers the full UTC day)
+        end.setUTCHours(23, 59, 59, 999);
 
         // Generate report data
         const reportData = await reportService.generateReportData({
@@ -84,6 +95,7 @@ export async function generateReport(req: Request, res: Response) {
             endDate: end,
             shiftIds,
             types,
+            timezone: resolvedTimezone,
         });
 
         console.log(`[generateReport] Report data generated: ${reportData.summary.totalTransactions} transactions`);
@@ -131,7 +143,7 @@ export async function getReportPreview(req: Request, res: Response) {
             return res.status(401).json({ message: 'Authentication required' });
         }
 
-        const { startDate, endDate, shiftIds, types } = req.body;
+        const { startDate, endDate, shiftIds, types, timezone } = req.body;
 
         // Validate required fields
         if (!startDate || !endDate) {
@@ -140,11 +152,19 @@ export async function getReportPreview(req: Request, res: Response) {
             });
         }
 
-        // Parse dates (support YYYY-MM-DD as local date)
+        const resolvedTimezone = (() => {
+            if (!timezone) return 'UTC';
+            try {
+                Intl.DateTimeFormat(undefined, { timeZone: timezone });
+                return timezone as string;
+            } catch {
+                return 'UTC';
+            }
+        })();
+
         const parseInputDate = (value: string): Date => {
             if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-                const [y, m, d] = value.split('-').map(Number);
-                return new Date(y, m - 1, d);
+                return new Date(value + 'T00:00:00.000Z');
             }
             return new Date(value);
         };
@@ -165,8 +185,8 @@ export async function getReportPreview(req: Request, res: Response) {
             });
         }
 
-        // Set end date to end of day
-        end.setHours(23, 59, 59, 999);
+        // Set end date to end of day in UTC
+        end.setUTCHours(23, 59, 59, 999);
 
         // Generate report data
         const reportData = await reportService.generateReportData({
@@ -175,6 +195,7 @@ export async function getReportPreview(req: Request, res: Response) {
             endDate: end,
             shiftIds,
             types,
+            timezone: resolvedTimezone,
         });
 
         // Return report data as JSON

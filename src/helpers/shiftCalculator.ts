@@ -40,33 +40,39 @@ function isTimeInShift(transactionTime: number, shiftStart: number, shiftEnd: nu
 }
 
 /**
- * Get the local hours and minutes of a date in a specific IANA timezone.
+ * Get the local hours, minutes and day-of-week of a date in a specific IANA timezone.
  * Uses the built-in Intl API (no external dependencies required).
  * Falls back to UTC if the timezone string is invalid.
  *
  * @param date - The UTC date to convert
  * @param timezone - IANA timezone name (e.g. "America/Mexico_City")
- * @returns Object with hours (0-23) and minutes (0-59) in the given timezone
+ * @returns Object with hours (0-23), minutes (0-59) and weekday (0=Sun … 6=Sat) in the given timezone
  */
-function getTimeInTimezone(date: Date, timezone: string): { hours: number; minutes: number } {
+function getTimeInTimezone(date: Date, timezone: string): { hours: number; minutes: number; weekday: number } {
     try {
         const formatter = new Intl.DateTimeFormat('en-US', {
             timeZone: timezone,
             hour: '2-digit',
             minute: '2-digit',
+            weekday: 'short',
             hour12: false,
         });
         const parts = formatter.formatToParts(date);
-        const hourPart = parts.find(p => p.type === 'hour')?.value ?? '0';
-        const minutePart = parts.find(p => p.type === 'minute')?.value ?? '0';
+        const hourPart    = parts.find(p => p.type === 'hour')?.value    ?? '0';
+        const minutePart  = parts.find(p => p.type === 'minute')?.value  ?? '0';
+        const weekdayPart = parts.find(p => p.type === 'weekday')?.value ?? 'Sun';
         // Intl can return "24" for midnight in some environments; normalise to 0
-        const hours = parseInt(hourPart, 10) % 24;
+        const hours   = parseInt(hourPart, 10) % 24;
         const minutes = parseInt(minutePart, 10);
-        return { hours, minutes };
+        const weekdayMap: Record<string, number> = {
+            Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+        };
+        const weekday = weekdayMap[weekdayPart] ?? date.getUTCDay();
+        return { hours, minutes, weekday };
     } catch {
         // Invalid timezone — fall back to UTC so the transaction is still saved
         console.warn(`[shiftCalculator] Invalid timezone "${timezone}", falling back to UTC`);
-        return { hours: date.getUTCHours(), minutes: date.getUTCMinutes() };
+        return { hours: date.getUTCHours(), minutes: date.getUTCMinutes(), weekday: date.getUTCDay() };
     }
 }
 
@@ -97,11 +103,18 @@ export function findShiftForTransaction(
     }
 
     // Convert transaction time to business local timezone before comparing
-    const { hours, minutes } = getTimeInTimezone(transactionDate, timezone);
+    const { hours, minutes, weekday } = getTimeInTimezone(transactionDate, timezone);
     const transactionTimeInMinutes = hours * 60 + minutes;
 
-    // Find the first shift that matches
+    // Find the first shift that matches both the day of the week and the time range
     for (const shift of shifts) {
+        // If the shift has days configured, check that the transaction's weekday is included.
+        // An empty days array means the shift applies every day.
+        const shiftDays: number[] = (shift as any).days ?? [];
+        if (shiftDays.length > 0 && !shiftDays.includes(weekday)) {
+            continue; // This shift doesn't apply today
+        }
+
         const shiftStart = timeToMinutes(shift.startTime);
         const shiftEnd = timeToMinutes(shift.endTime);
 
