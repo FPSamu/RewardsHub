@@ -71,7 +71,7 @@ export const login = async (req: Request, res: Response) => {
     // Firebase tiene la cuenta pero MongoDB no → inconsistencia
     return res.status(409).json({
         code: 'ACCOUNT_INCONSISTENCY',
-        message: 'Firebase account exists but no MongoDB record found',
+        message: 'Aún no tienes una cuenta con ese correo. ¡Crea una!',
     });
 };
 
@@ -100,7 +100,7 @@ export const checkEmail = async (req: Request, res: Response) => {
     // Existe en Firebase pero no en MongoDB
     return res.status(409).json({
         code: 'ACCOUNT_INCONSISTENCY',
-        message: 'Firebase account exists but no MongoDB record found',
+        message: 'Aún no tienes una cuenta con ese correo. ¡Crea una!',
     });
 };
 
