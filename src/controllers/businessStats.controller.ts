@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getBusinessStats, getRecentClients } from '../services/businessStats.service';
+import { getBusinessStats, getRecentClients, getStatsByBranch, getShiftStatsByBranch } from '../services/businessStats.service';
 
 /**
  * GET /business/stats
@@ -15,6 +15,40 @@ export const getStats = async (req: Request, res: Response) => {
     } catch (err) {
         console.error('[businessStats] Error fetching stats:', err);
         return res.status(500).json({ message: 'failed to get business stats' });
+    }
+};
+
+/**
+ * GET /business/stats/shifts-by-branch
+ * Devuelve transacciones agrupadas por sucursal y turno del negocio autenticado.
+ */
+export const getShiftStatsByBranchHandler = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    try {
+        const stats = await getShiftStatsByBranch(biz.id);
+        return res.json(stats);
+    } catch (err) {
+        console.error('[businessStats] Error fetching shift stats by branch:', err);
+        return res.status(500).json({ message: 'failed to get shift stats' });
+    }
+};
+
+/**
+ * GET /business/stats/by-branch
+ * Devuelve transacciones agrupadas por sucursal del negocio autenticado.
+ */
+export const getStatsByBranchHandler = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    try {
+        const stats = await getStatsByBranch(biz.id);
+        return res.json(stats);
+    } catch (err) {
+        console.error('[businessStats] Error fetching stats by branch:', err);
+        return res.status(500).json({ message: 'failed to get branch stats' });
     }
 };
 

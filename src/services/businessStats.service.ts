@@ -9,6 +9,7 @@ export interface BusinessStats {
     totalPointsDistributed: number;
     totalRewardsRedeemed: number;
     totalActiveRewards: number;
+    totalRevenue: number;
 }
 
 export const getBusinessStats = async (businessId: string): Promise<BusinessStats> => {
@@ -19,6 +20,7 @@ export const getBusinessStats = async (businessId: string): Promise<BusinessStat
         pointsResult,
         totalRewardsRedeemed,
         totalActiveRewards,
+        revenueResult,
     ] = await Promise.all([
         // Clientes únicos con al menos una transacción
         TransactionModel.distinct('userId', { businessId: oid }),
@@ -34,6 +36,12 @@ export const getBusinessStats = async (businessId: string): Promise<BusinessStat
 
         // Recompensas activas
         RewardModel.countDocuments({ businessId: oid, isActive: true }),
+
+        // Ingresos generados: suma de purchaseAmount en transacciones con puntos
+        TransactionModel.aggregate([
+            { $match: { businessId: oid, type: 'add', totalPointsChange: { $gt: 0 } } },
+            { $group: { _id: null, total: { $sum: '$purchaseAmount' } } },
+        ]),
     ]);
 
     return {
@@ -41,7 +49,67 @@ export const getBusinessStats = async (businessId: string): Promise<BusinessStat
         totalPointsDistributed: pointsResult[0]?.total ?? 0,
         totalRewardsRedeemed,
         totalActiveRewards,
+        totalRevenue: revenueResult[0]?.total ?? 0,
     };
+};
+
+export interface BranchStat {
+    branchId: string | null;
+    transactionCount: number;
+    totalPoints: number;
+}
+
+export interface ShiftStat {
+    branchId: string | null;
+    shiftId: string | null;
+    shiftName: string;
+    transactionCount: number;
+}
+
+export const getShiftStatsByBranch = async (businessId: string): Promise<ShiftStat[]> => {
+    const oid = new Types.ObjectId(businessId);
+
+    const results = await TransactionModel.aggregate([
+        { $match: { businessId: oid, type: 'add' } },
+        {
+            $group: {
+                _id: {
+                    branchId: '$branchId',
+                    shiftId: '$workShiftId',
+                    shiftName: '$workShiftName',
+                },
+                transactionCount: { $sum: 1 },
+            },
+        },
+    ]);
+
+    return results.map((r) => ({
+        branchId: r._id.branchId?.toString() ?? null,
+        shiftId: r._id.shiftId?.toString() ?? null,
+        shiftName: r._id.shiftName ?? 'Sin turno',
+        transactionCount: r.transactionCount,
+    }));
+};
+
+export const getStatsByBranch = async (businessId: string): Promise<BranchStat[]> => {
+    const oid = new Types.ObjectId(businessId);
+
+    const results = await TransactionModel.aggregate([
+        { $match: { businessId: oid, type: 'add' } },
+        {
+            $group: {
+                _id: '$branchId',
+                transactionCount: { $sum: 1 },
+                totalPoints: { $sum: '$totalPointsChange' },
+            },
+        },
+    ]);
+
+    return results.map((r) => ({
+        branchId: r._id?.toString() ?? null,
+        transactionCount: r.transactionCount,
+        totalPoints: r.totalPoints,
+    }));
 };
 
 export interface RecentClient {
