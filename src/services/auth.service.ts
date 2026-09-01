@@ -5,8 +5,11 @@ import { Model } from 'mongoose';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
-const ACCESS_EXPIRES = process.env.ACCESS_EXPIRES || '15m';
-const REFRESH_EXPIRES = process.env.REFRESH_EXPIRES || '7d';
+// Se aceptan los dos nombres: `render.yaml` y despliegues antiguos usan
+// JWT_*_IN, mientras que .env local usa ACCESS_/REFRESH_EXPIRES. Leer solo uno
+// hacía que cambiar el TTL desde el dashboard no tuviera ningún efecto.
+const ACCESS_EXPIRES = process.env.ACCESS_EXPIRES || process.env.JWT_EXPIRES_IN || '15m';
+const REFRESH_EXPIRES = process.env.REFRESH_EXPIRES || process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 export type AccountRole = 'user' | 'business';
 

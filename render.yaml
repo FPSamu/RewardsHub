@@ -21,10 +21,13 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
-      - key: JWT_EXPIRES_IN
-        value: 15m
-      - key: JWT_REFRESH_EXPIRES_IN
-        value: 7d
+      # Dispositivos de mostrador: el access token dura un turno y el refresh
+      # token 90 dias, de modo que una tablet usada a diario nunca vuelve a ver
+      # la pantalla de login. El refresh token es revocable (vive en Mongo).
+      - key: ACCESS_EXPIRES
+        value: 8h
+      - key: REFRESH_EXPIRES
+        value: 90d
       - key: ALLOWED_ORIGINS
         sync: false
       - key: USER_COLLECTION
