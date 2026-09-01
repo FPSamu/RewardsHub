@@ -19,6 +19,7 @@ import reportRoutes from './routes/report.routes';
 import notificationRoutes from './routes/notification.routes';
 import passRoutes from './routes/pass.routes';
 import membershipRoutes from './routes/membership.routes';
+import appVersionRoutes from './routes/appVersion.routes';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const annaRouter = require('./anna/router');
 
@@ -101,6 +102,7 @@ app.use('/report', reportRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/passes', passRoutes);
 app.use('/memberships', membershipRoutes);
+app.use('/app-version', appVersionRoutes);
 app.use('/anna/api', annaRouter);
 
 export default app;
