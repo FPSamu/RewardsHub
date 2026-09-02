@@ -11,32 +11,51 @@ import { Request, Response } from 'express';
  *
  * Both default to 0.0.0, which disables the gate entirely. Blocking every till
  * in every store is a big hammer, so it only happens when someone deliberately
- * raises APP_MIN_VERSION_*.
+ * raises the minimum.
+ *
+ * Config is scoped by app AND platform, because the business and client apps
+ * share this backend and ship on their own schedules — a business release must
+ * never mark the client app as out of date.
  */
 
 type Platform = 'ios' | 'android';
+type App = 'business' | 'client';
 
 const readPlatform = (raw: unknown): Platform =>
     String(raw).toLowerCase() === 'android' ? 'android' : 'ios';
 
-const config = (platform: Platform) => {
-    const suffix = platform.toUpperCase();
+/**
+ * Defaults to `business`: the build already in App Review predates this
+ * parameter and sends no `app`, so it must keep resolving to its own config.
+ */
+const readApp = (raw: unknown): App =>
+    String(raw).toLowerCase() === 'client' ? 'client' : 'business';
+
+const config = (app: App, platform: Platform) => {
+    const suffix = `${app.toUpperCase()}_${platform.toUpperCase()}`;
+    const legacySuffix = platform.toUpperCase();
+
+    // Scoped names win. The business app also falls back to the original
+    // unscoped names so values already set in the dashboard keep working; the
+    // client app deliberately does not, so it can never inherit them.
+    const read = (key: string): string | undefined =>
+        process.env[`APP_${key}_${suffix}`] ||
+        (app === 'business' ? process.env[`APP_${key}_${legacySuffix}`] : undefined);
+
     return {
-        minVersion: process.env[`APP_MIN_VERSION_${suffix}`] || '0.0.0',
-        latestVersion: process.env[`APP_LATEST_VERSION_${suffix}`] || '0.0.0',
-        storeUrl: process.env[`APP_STORE_URL_${suffix}`] || null,
+        minVersion: read('MIN_VERSION') || '0.0.0',
+        latestVersion: read('LATEST_VERSION') || '0.0.0',
+        storeUrl: read('STORE_URL') || null,
+        updateMessage:
+            process.env[`APP_UPDATE_MESSAGE_${app.toUpperCase()}`] ||
+            (app === 'business' ? process.env.APP_UPDATE_MESSAGE : undefined) ||
+            null,
     };
 };
 
 export const getAppVersion = (req: Request, res: Response) => {
+    const app = readApp(req.query.app);
     const platform = readPlatform(req.query.platform);
-    const { minVersion, latestVersion, storeUrl } = config(platform);
 
-    return res.json({
-        platform,
-        minVersion,
-        latestVersion,
-        storeUrl,
-        updateMessage: process.env.APP_UPDATE_MESSAGE || null,
-    });
+    return res.json({ app, platform, ...config(app, platform) });
 };
