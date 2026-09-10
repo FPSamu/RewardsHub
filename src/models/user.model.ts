@@ -1,4 +1,5 @@
 import { Schema, model, Document } from 'mongoose';
+import { IRotatedRefreshToken, rotatedRefreshTokenSchema } from './rotatedRefreshToken.schema';
 
 export interface IUser extends Document {
     /** underlying MongoDB _id field */
@@ -10,6 +11,7 @@ export interface IUser extends Document {
     isVerified: boolean;
     createdAt: Date;
     refreshTokens?: string[];
+    rotatedRefreshTokens?: IRotatedRefreshToken[];
     verificationToken?: string;
     resetPasswordToken?: string;
     resetPasswordExpires?: Date;
@@ -25,6 +27,7 @@ const userSchema = new Schema<IUser>(
         profilePicture: { type: String },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
+        rotatedRefreshTokens: { type: [rotatedRefreshTokenSchema], default: [] },
         isVerified: { type: Boolean, default: false },
         verificationToken: { type: String },
         resetPasswordToken: { type: String },
@@ -85,6 +88,7 @@ userSchema.set('toJSON', {
         delete ret.passHash;
         // do not expose refresh tokens in serialized output
         if (ret.refreshTokens) delete ret.refreshTokens;
+        if (ret.rotatedRefreshTokens) delete ret.rotatedRefreshTokens;
     },
 });
 

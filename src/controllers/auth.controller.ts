@@ -322,11 +322,25 @@ export const refresh = async (req: Request, res: Response) => {
         const model = payload.role === 'business' ? BusinessModel : UserModel;
 
         const ok = await authService.hasRefreshToken(model, payload.sub, refreshToken);
-        if (!ok) return res.status(401).json({ message: 'invalid refresh token' });
+        if (!ok) {
+            // El token no está activo, pero puede ser una carrera entre pestañas:
+            // otra petición lo rotó hace un instante. Dentro del periodo de gracia
+            // devolvemos ese mismo reemplazo en lugar de cerrar la sesión.
+            const replacement = await authService.resolveGracedRefreshToken(
+                model,
+                payload.sub,
+                refreshToken
+            );
+            if (!replacement) return res.status(401).json({ message: 'invalid refresh token' });
 
-        await authService.removeRefreshToken(model, payload.sub, refreshToken);
+            return res.json({
+                token: authService.issueAccessToken(payload.sub, payload.role),
+                refreshToken: replacement,
+            });
+        }
+
         const tokens = authService.issueTokenPair(payload.sub, payload.role);
-        await authService.addRefreshToken(model, payload.sub, tokens.refreshToken);
+        await authService.rotateRefreshToken(model, payload.sub, refreshToken, tokens.refreshToken);
 
         return res.json({ token: tokens.accessToken, refreshToken: tokens.refreshToken });
     } catch {

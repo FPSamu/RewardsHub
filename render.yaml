@@ -28,6 +28,10 @@ services:
         value: 8h
       - key: REFRESH_EXPIRES
         value: 90d
+      # Un refresh token ya rotado se sigue aceptando estos segundos, para que
+      # dos pestanas que refrescan a la vez no se cierren la sesion mutuamente.
+      - key: REFRESH_GRACE_SECONDS
+        value: 30
       - key: ALLOWED_ORIGINS
         sync: false
       - key: USER_COLLECTION

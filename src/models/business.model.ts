@@ -5,6 +5,7 @@
  * It mirrors the `User` model structure but is stored in a separate collection.
  */
 import { Schema, model, Document } from 'mongoose';
+import { IRotatedRefreshToken, rotatedRefreshTokenSchema } from './rotatedRefreshToken.schema';
 
 export interface ILocation {
     _id?: any;
@@ -28,6 +29,7 @@ export interface IBusiness extends Document {
     timezone: string; // IANA timezone name (e.g. "America/Mexico_City")
     createdAt: Date;
     refreshTokens?: string[];
+    rotatedRefreshTokens?: IRotatedRefreshToken[];
     isVerified: boolean;
     verificationToken?: string;
     resetPasswordToken?: string;
@@ -61,6 +63,7 @@ const businessSchema = new Schema<IBusiness>(
         timezone: { type: String, default: 'UTC' },
         createdAt: { type: Date, default: Date.now },
         refreshTokens: { type: [String], default: [] },
+        rotatedRefreshTokens: { type: [rotatedRefreshTokenSchema], default: [] },
         isVerified: { type: Boolean, default: false },
         verificationToken: { type: String },
         resetPasswordToken: { type: String },
@@ -117,6 +120,7 @@ businessSchema.set('toJSON', {
         delete ret.__v;
         delete ret.passHash;
         if (ret.refreshTokens) delete ret.refreshTokens;
+        if (ret.rotatedRefreshTokens) delete ret.rotatedRefreshTokens;
     },
 });
 
