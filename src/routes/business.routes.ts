@@ -1,7 +1,16 @@
 import { Router } from 'express';
 import multer from 'multer';
 import * as businessCtrl from '../controllers/business.controller';
-import { getStats, getRecentClientsHandler, getStatsByBranchHandler, getShiftStatsByBranchHandler } from '../controllers/businessStats.controller';
+import {
+    getStats,
+    getRecentClientsHandler,
+    getStatsByBranchHandler,
+    getShiftStatsByBranchHandler,
+    getTimeSeriesStatsHandler,
+    getAtRiskClientsHandler,
+    getTopRewardsHandler,
+    getBranchComparisonHandler,
+} from '../controllers/businessStats.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
 import { requireAdminPin } from '../middleware/adminPin.middleware';
 import adminPinRoutes from './adminPin.routes';
@@ -49,6 +58,10 @@ router.use('/reports', reportRoutes);
 router.get('/stats', authenticateBusiness, getStats);
 router.get('/stats/by-branch', authenticateBusiness, getStatsByBranchHandler);
 router.get('/stats/shifts-by-branch', authenticateBusiness, getShiftStatsByBranchHandler);
+router.get('/stats/timeseries', authenticateBusiness, getTimeSeriesStatsHandler);
+router.get('/stats/at-risk-clients', authenticateBusiness, getAtRiskClientsHandler);
+router.get('/stats/top-rewards', authenticateBusiness, getTopRewardsHandler);
+router.get('/stats/branch-comparison', authenticateBusiness, getBranchComparisonHandler);
 router.get('/recent-clients', authenticateBusiness, getRecentClientsHandler);
 
 // Get business by ID (must be last to avoid route conflicts)
