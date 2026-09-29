@@ -97,7 +97,10 @@ const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Session) 
 };
 
 const handleSubscriptionUpdated = async (subscription: Stripe.Subscription) => {
-    const status = subscription.status === 'active' ? 'active' :
+    // 'trialing' counts as active — the business already has full access during
+    // its free month. Our own MembershipStatus type has no separate 'trialing'
+    // value, so it maps to 'active' like a subscription that's already being paid.
+    const status = subscription.status === 'active' || subscription.status === 'trialing' ? 'active' :
                    subscription.status === 'past_due' ? 'past_due' :
                    subscription.status === 'canceled' ? 'canceled' : 'none';
 

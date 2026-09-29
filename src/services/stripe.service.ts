@@ -41,6 +41,8 @@ export const createCheckoutSession = async (
         throw new Error(`Price ID not configured for plan: ${planType}`);
     }
 
+    const isSubscription = planType !== 'lifetime_access';
+
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
         customer: stripeCustomerId,
         payment_method_types: ['card'],
@@ -50,14 +52,21 @@ export const createCheckoutSession = async (
                 quantity: 1,
             },
         ],
-        mode: planType === 'lifetime_access' ? 'payment' : 'subscription',
+        mode: isSubscription ? 'subscription' : 'payment',
         allow_promotion_codes: true,
         success_url: successUrl,
         cancel_url: cancelUrl,
         metadata: {
             businessId,
             planType
-        }
+        },
+        // First month free — card is required at checkout but never charged
+        // until the trial ends; Stripe handles the auto-charge on its own.
+        ...(isSubscription && {
+            subscription_data: {
+                trial_period_days: 30,
+            },
+        }),
     };
 
     const session = await stripe.checkout.sessions.create(sessionParams);
