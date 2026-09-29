@@ -10,6 +10,7 @@ import {
     getAtRiskClientsHandler,
     getTopRewardsHandler,
     getBranchComparisonHandler,
+    getKpiSummaryHandler,
 } from '../controllers/businessStats.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
 import { requireAdminPin } from '../middleware/adminPin.middleware';
@@ -62,6 +63,7 @@ router.get('/stats/timeseries', authenticateBusiness, getTimeSeriesStatsHandler)
 router.get('/stats/at-risk-clients', authenticateBusiness, getAtRiskClientsHandler);
 router.get('/stats/top-rewards', authenticateBusiness, getTopRewardsHandler);
 router.get('/stats/branch-comparison', authenticateBusiness, getBranchComparisonHandler);
+router.get('/stats/kpi-summary', authenticateBusiness, getKpiSummaryHandler);
 router.get('/recent-clients', authenticateBusiness, getRecentClientsHandler);
 
 // Get business by ID (must be last to avoid route conflicts)

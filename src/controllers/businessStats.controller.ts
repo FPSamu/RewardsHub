@@ -8,6 +8,7 @@ import {
     getAtRiskClients,
     getTopRewards,
     getBranchComparison,
+    getKpiSummary,
 } from '../services/businessStats.service';
 
 /**
@@ -128,13 +129,34 @@ export const getTopRewardsHandler = async (req: Request, res: Response) => {
     if (!biz) return res.status(401).json({ message: 'not authenticated' });
 
     const limit = Math.min(parseInt(req.query.limit as string) || 5, 20);
+    const days = req.query.days ? Math.min(Math.max(parseInt(req.query.days as string), 7), 90) : undefined;
 
     try {
-        const rewards = await getTopRewards(biz.id, limit);
+        const rewards = await getTopRewards(biz.id, limit, days);
         return res.json(rewards);
     } catch (err) {
         console.error('[businessStats] Error fetching top rewards:', err);
         return res.status(500).json({ message: 'failed to get top rewards' });
+    }
+};
+
+/**
+ * GET /business/stats/kpi-summary?days=30
+ * Resumen para la franja de KPIs: métricas con tendencia (periodo actual vs
+ * el anterior) más las que son una foto del momento.
+ */
+export const getKpiSummaryHandler = async (req: Request, res: Response) => {
+    const biz = req.business;
+    if (!biz) return res.status(401).json({ message: 'not authenticated' });
+
+    const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 7), 90);
+
+    try {
+        const summary = await getKpiSummary(biz.id, days);
+        return res.json(summary);
+    } catch (err) {
+        console.error('[businessStats] Error fetching KPI summary:', err);
+        return res.status(500).json({ message: 'failed to get KPI summary' });
     }
 };
 
