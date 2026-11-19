@@ -19,7 +19,7 @@ check_creds() {
   # sts get-caller-identity responde aun con credenciales de una sesión
   # terminada (AWS Academy las revoca con la política voc-cancel-cred), así
   # que se prueba una llamada real de EC2.
-  if ! aws_ ec2 describe-availability-zones --max-items 1 >/dev/null 2>&1; then
+  if ! aws_ ec2 describe-availability-zones --query "AvailabilityZones[0].ZoneName" --output text >/dev/null 2>&1; then
     echo "❌ Credenciales inválidas o de una sesión que ya terminó."
     echo "   En el Learner Lab: Start Lab (espera el círculo verde) → AWS Details → AWS CLI → Show,"
     echo "   y pega el bloque NUEVO en ~/.aws/credentials bajo [$PROFILE]."
