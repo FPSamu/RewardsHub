@@ -16,9 +16,13 @@ aws_() { aws --profile "$PROFILE" --region "$REGION" "$@"; }
 out() { terraform output -raw "$1"; }
 
 check_creds() {
-  if ! aws_ sts get-caller-identity >/dev/null 2>&1; then
-    echo "❌ Credenciales inválidas o vencidas. En el Learner Lab: Start Lab → AWS Details →"
-    echo "   copia el bloque de 'AWS CLI' a ~/.aws/credentials (perfil [$PROFILE])."
+  # sts get-caller-identity responde aun con credenciales de una sesión
+  # terminada (AWS Academy las revoca con la política voc-cancel-cred), así
+  # que se prueba una llamada real de EC2.
+  if ! aws_ ec2 describe-availability-zones --max-items 1 >/dev/null 2>&1; then
+    echo "❌ Credenciales inválidas o de una sesión que ya terminó."
+    echo "   En el Learner Lab: Start Lab (espera el círculo verde) → AWS Details → AWS CLI → Show,"
+    echo "   y pega el bloque NUEVO en ~/.aws/credentials bajo [$PROFILE]."
     exit 1
   fi
 }
