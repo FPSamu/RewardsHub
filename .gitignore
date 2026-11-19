@@ -10,3 +10,7 @@ certs/apple/*.pem
 certs/google/service-account.json
 logs/
 certs/certs/
+
+# Python bytecode (scripts de Blender en design/3d)
+__pycache__/
+*.blend1
