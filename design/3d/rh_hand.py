@@ -80,20 +80,23 @@ def build_hand(cfg):
         capsule(base, edge, r)
         capsule(edge, tip, r * 0.92)
 
-    # Pulgar por el canto derecho, apoyado al frente
-    capsule((0.22, -0.72, -0.12), (0.46, -0.5, -0.01), 0.12)
-    capsule((0.46, -0.5, -0.01), (0.36, -0.3, 0.085), 0.108)
+    skin = rh_coin.material("RH_Skin", cfg["skin"], 0.55, 0.1)
 
-    rh_coin.set_active(obj)
-    bpy.ops.object.convert(target="MESH")
-    hand = bpy.context.object
-    hand.name = "RH_Hand"
-    sub = hand.modifiers.new("Smooth", "SMOOTH")
-    sub.factor, sub.iterations = 0.6, 6
-    rh_coin.apply_modifiers(hand)
-    bpy.ops.object.shade_smooth()
-    hand.data.materials.clear()
-    hand.data.materials.append(rh_coin.material("RH_Skin", cfg["skin"], 0.55, 0.1))
+    def to_mesh(o, name):
+        rh_coin.set_active(o)
+        bpy.ops.object.convert(target="MESH")
+        m = bpy.context.object
+        m.name = name
+        sub = m.modifiers.new("Smooth", "SMOOTH")
+        sub.factor, sub.iterations = 0.6, 6
+        rh_coin.apply_modifiers(m)
+        bpy.ops.object.shade_smooth()
+        m.data.materials.clear()
+        m.data.materials.append(skin)
+        return m
+
+    hand = to_mesh(obj, "RH_Hand")
+    thumb = build_thumb(cfg, skin, to_mesh)
 
     # Manga con puño ámbar
     def cyl(name, r, depth, p1, p2, mat, soft=0.03):
@@ -118,7 +121,54 @@ def build_hand(cfg):
     # Manga corta y redondeada: la mano "flota" y funciona en cualquier tamaño de slot
     sleeve = cyl("RH_Sleeve", 0.34, 0.5, cuff_a + d * 0.14, cuff_a + d * 0.64,
                  rh_coin.material("RH_Sleeve", cfg["sleeve"], 0.6, 0.1), soft=0.12)
-    return hand, [cuff, sleeve]
+    return hand, [thumb, cuff, sleeve]
+
+
+# Pulgar: objeto aparte (otra familia de metaballs) para animarlo en la web.
+# Sale por detrás del canto derecho y, en su pose de reposo, presiona el botón
+# ámbar de la pantalla. El origen queda en la base para girarlo desde ahí.
+THUMB_BASE = Vector((0.24, -0.78, -0.14))
+THUMB_KNUCKLE = Vector((0.47, -0.66, 0.02))
+THUMB_TIP = Vector((0.17, -0.6, 0.15))
+CTA_TOP = 0.0775  # cara frontal del botón ámbar (rh_phone: sz + 0.004 + 0.006)
+
+
+def build_thumb(cfg, skin, to_mesh):
+    def make(tip_z):
+        mb = bpy.data.metaballs.new("RH_Thumb")
+        mb.resolution, mb.render_resolution, mb.threshold = 0.025, 0.018, 0.6
+        obj = bpy.data.objects.new("RH_Thumb", mb)
+        bpy.context.collection.objects.link(obj)
+
+        def capsule(p1, p2, r, stiff=2.4):
+            d = p2 - p1
+            e = mb.elements.new(type="CAPSULE")
+            e.co, e.radius, e.stiffness = (p1 + p2) / 2, r, stiff
+            e.size_x = d.length / 2
+            e.rotation = Vector((1, 0, 0)).rotation_difference(d.normalized())
+
+        tip = Vector((THUMB_TIP.x, THUMB_TIP.y, tip_z))
+        knuckle = THUMB_KNUCKLE.copy()
+        capsule(THUMB_BASE, knuckle, 0.12)
+        capsule(knuckle, tip, 0.105)
+        return to_mesh(obj, "RH_Thumb")
+
+    # Baja o sube la yema hasta que toque justo el botón (unas cuantas pasadas)
+    tip_z = THUMB_TIP.z
+    for attempt in range(6):
+        thumb = make(tip_z)
+        front = [v.co.z for v in thumb.data.vertices if (v.co.xy - THUMB_TIP.xy).length < 0.1 and v.co.z > 0.0]
+        dz = CTA_TOP - min(front)
+        if abs(dz) < 5e-4 or attempt == 5:
+            break
+        bpy.data.objects.remove(thumb, do_unlink=True)
+        tip_z += dz
+    bpy.context.scene.cursor.location = THUMB_BASE
+    rh_coin.set_active(thumb)
+    bpy.ops.object.origin_set(type="ORIGIN_CURSOR")
+    bpy.context.scene.cursor.location = (0, 0, 0)  # los primitivos que siguen se crean en el cursor
+    print(f"[RH] Pulgar: yema z={tip_z:.3f} (error {dz:+.4f})")
+    return thumb
 
 
 def main(cfg=CONFIG):
