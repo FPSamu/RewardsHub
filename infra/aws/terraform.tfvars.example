@@ -1,0 +1,7 @@
+# Copia a terraform.tfvars y ajusta. terraform.tfvars no se versiona.
+# aws_profile = "academy"
+# region      = "us-east-1"
+# env_file    = "../../.env"
+# key_name    = "vockey"     # para SSH con la llave del lab
+# api_desired = 2
+# enable_waf  = true

@@ -3,6 +3,7 @@ import app from './app';
 import connectDb from './db/mongoose';
 import os from 'os';
 import { runNotificationBatch, runEngagementBatch } from './services/notification.service';
+import { isQueueEnabled } from './queue/sqs';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 const host = '0.0.0.0'; // Listen on all network interfaces
@@ -10,9 +11,15 @@ const host = '0.0.0.0'; // Listen on all network interfaces
 const start = async () => {
     // Ensure DB connection is established before accepting requests
     await connectDb();
-    scheduleNotifications();
-    scheduleEngagement();
-    app.listen(port, host, () => {
+    // Con varias instancias detrás del load balancer, el scheduler en proceso
+    // dispararía el batch N veces. En AWS lo programa EventBridge → SQS → worker.
+    if (isQueueEnabled()) {
+        console.log('📨 [Queue] SQS activa: batches programados por EventBridge, no en proceso');
+    } else {
+        scheduleNotifications();
+        scheduleEngagement();
+    }
+    const server = app.listen(port, host, () => {
         console.log(`Server running on port ${port}`);
         console.log(`Local: http://localhost:${port}`);
         
@@ -27,6 +34,16 @@ const start = async () => {
             });
         });
     });
+
+    // El ASG/ALB manda SIGTERM al reemplazar instancias: dejamos de aceptar
+    // conexiones y terminamos las peticiones en curso antes de salir.
+    const shutdown = (signal: string) => {
+        console.log(`🛑 ${signal} recibido, cerrando servidor...`);
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(0), 25_000).unref();
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 };
 
 /**

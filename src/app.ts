@@ -25,6 +25,13 @@ const annaRouter = require('./anna/router');
 
 const app = express();
 
+// Detrás de un load balancer (ALB) la IP real del cliente viene en
+// X-Forwarded-For. TRUST_PROXY = número de proxies delante (1 para el ALB).
+if (process.env.TRUST_PROXY) {
+    const hops = parseInt(process.env.TRUST_PROXY, 10);
+    app.set('trust proxy', Number.isNaN(hops) ? process.env.TRUST_PROXY : hops);
+}
+
 // Webhook routes MUST come before express.json() for raw body parsing
 app.use('/webhooks', webhookRoutes);
 
@@ -69,7 +76,9 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-app.use(morgan('dev'));
+// El load balancer consulta /health cada pocos segundos por instancia; no
+// registrarlo deja en los logs solo el tráfico real.
+app.use(morgan('dev', { skip: (req) => req.url === '/health' }));
 app.use(express.json());
 
 /**

@@ -6,6 +6,7 @@
  */
 import { Request, Response } from 'express';
 import { notifyBusinessUsers, runNotificationBatch, runEngagementBatch } from '../services/notification.service';
+import { enqueueJob, isQueueEnabled } from '../queue/sqs';
 
 /**
  * POST /notifications/trigger
@@ -38,12 +39,19 @@ export const triggerBusinessNotifications = async (
  * POST /notifications/run-batch
  * Runs the full notification batch across all users.
  * Only available in non-production or with the ADMIN_SECRET header.
+ * Con SQS activa (SQS_QUEUE_URL) encola el trabajo y responde 202.
  */
 export const runBatch = async (req: Request, res: Response): Promise<void> => {
     try {
         const adminSecret = process.env.ADMIN_SECRET;
         if (adminSecret && req.headers['x-admin-secret'] !== adminSecret) {
             res.status(403).json({ message: 'Forbidden' });
+            return;
+        }
+
+        if (isQueueEnabled()) {
+            const messageId = await enqueueJob('notification-batch');
+            res.status(202).json({ message: 'Batch encolado', messageId });
             return;
         }
 
@@ -60,6 +68,12 @@ export const runEngagement = async (req: Request, res: Response): Promise<void> 
         const adminSecret = process.env.ADMIN_SECRET;
         if (adminSecret && req.headers['x-admin-secret'] !== adminSecret) {
             res.status(403).json({ message: 'Forbidden' });
+            return;
+        }
+
+        if (isQueueEnabled()) {
+            const messageId = await enqueueJob('engagement-batch');
+            res.status(202).json({ message: 'Engagement batch encolado', messageId });
             return;
         }
 

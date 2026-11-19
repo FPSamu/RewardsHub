@@ -1,0 +1,61 @@
+#!/bin/bash
+# Arranque de una instancia RewardsHub (rol: ${role}).
+# Logs de este script: /var/log/cloud-init-output.log
+# Logs de la app:      journalctl -u rewardshub -f
+set -euxo pipefail
+export PATH=/usr/local/bin:$PATH
+
+dnf install -y tar xz unzip
+
+# Node.js (binario oficial, misma versión en todas las instancias)
+curl -fsSL "https://nodejs.org/dist/v${node_version}/node-v${node_version}-linux-x64.tar.xz" \
+  | tar -xJ -C /usr/local --strip-components=1
+
+id rewardshub >/dev/null 2>&1 || useradd --system --create-home --shell /sbin/nologin rewardshub
+rm -rf /opt/rewardshub && mkdir -p /opt/rewardshub
+
+# Código y .env desde el bucket privado (credenciales: LabInstanceProfile)
+aws s3 cp "s3://${bucket}/${app_key}" /tmp/app.zip --region ${region}
+unzip -q /tmp/app.zip -d /opt/rewardshub
+aws s3 cp "s3://${bucket}/${env_key}" /opt/rewardshub/.env --region ${region}
+chmod 600 /opt/rewardshub/.env
+
+cd /opt/rewardshub
+export HOME=/root
+# Si el lockfile no cuadra con esta versión de npm, no tumbar el arranque.
+npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund
+npm run build
+chown -R rewardshub:rewardshub /opt/rewardshub
+
+# Variables propias de AWS. systemd las pone en el entorno y dotenv no
+# sobreescribe variables existentes, así que ganan sobre el .env.
+cat > /etc/rewardshub.env <<ENV
+PORT=3000
+TRUST_PROXY=1
+SQS_QUEUE_URL=${queue_url}
+SQS_REGION=${region}
+SQS_VISIBILITY_SECONDS=${visibility_seconds}
+ENV
+
+cat > /etc/systemd/system/rewardshub.service <<UNIT
+[Unit]
+Description=RewardsHub ${role}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=rewardshub
+WorkingDirectory=/opt/rewardshub
+EnvironmentFile=/etc/rewardshub.env
+ExecStart=/usr/local/bin/node dist/${entrypoint}.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=${stop_timeout}
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now rewardshub
