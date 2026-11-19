@@ -11,6 +11,24 @@ EventBridge (10:00 y 19:00 UTC) ──► SQS jobs ──► ASG Workers (1..3 �
                                        └─► DLQ (tras 5 intentos fallidos)
 ```
 
+## Frontend
+
+`frontend.tf` despliega `../rewardshub_front` (Vite/React) como sitio estático de S3:
+
+```
+http://<bucket>.s3-website-us-east-1.amazonaws.com  → frontend (rutas de la SPA → index.html)
+            │ llamadas a la API (CORS)
+            ▼
+http://<alb>.us-east-1.elb.amazonaws.com            → API
+```
+
+- El lab no permite CloudFront y no hay dominio para un certificado, así que **todo es HTTP**.
+- Terraform compila el frontend **en tu máquina** (`vite build` con `VITE_API_URL` = URL del ALB) y lo sube. Se usa lo que haya en disco en ese repo, sea cual sea la rama.
+- Las instancias de la API reciben `ALLOWED_ORIGINS` y `FRONTEND_URL` con la URL del sitio.
+- Login con Google: agrega `<bucket>.s3-website-us-east-1.amazonaws.com` en Firebase → Authentication → Settings → Authorized domains.
+- Por ser HTTP, el navegador bloquea la **cámara** (escáner QR) y la **geolocalización** (mapa). Para la demo, en Chrome: `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, agrega la URL del sitio y reinicia Chrome.
+- `enable_frontend = false` lo omite.
+
 ## Qué cambió en el código
 
 | Archivo | Cambio |
@@ -78,7 +96,7 @@ sudo journalctl -u rewardshub -f              # la app (API o worker)
 
 - No se pueden crear roles IAM: las instancias usan `LabInstanceProfile`, y EventBridge publica en SQS mediante la política de la cola (no necesita un rol).
 - Solo `us-east-1` / `us-west-2`.
-- La SCP del lab niega `s3:GetBucketObjectLockConfiguration` (por eso el bucket se crea con CloudFormation) y `autoscaling:StartInstanceRefresh` (por eso existe `./lab.sh roll`).
+- La SCP del lab niega `s3:GetBucketObjectLockConfiguration` (por eso el bucket se crea con CloudFormation) y `autoscaling:StartInstanceRefresh` (por eso existe `./lab.sh roll`). CloudFront no está permitido en absoluto (por eso el frontend es un sitio estático de S3 por HTTP).
 - Si `apply` falla en los recursos `aws_wafv2_*`, desactiva WAF con `enable_waf = false`.
 - Solo HTTP (no hay dominio ni certificado). Los webhooks de Stripe necesitan HTTPS, así que no apuntes Stripe al ALB.
 - El `.env` vive cifrado (SSE-S3) en un bucket privado del lab. Sus `AWS_ACCESS_KEY_ID`/`SECRET` siguen usándose solo para S3; SQS usa el rol de la instancia.

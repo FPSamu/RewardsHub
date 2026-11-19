@@ -35,6 +35,10 @@ TRUST_PROXY=1
 SQS_QUEUE_URL=${queue_url}
 SQS_REGION=${region}
 SQS_VISIBILITY_SECONDS=${visibility_seconds}
+%{ if frontend_url != "" ~}
+ALLOWED_ORIGINS=${frontend_url}
+FRONTEND_URL=${frontend_url}
+%{ endif ~}
 ENV
 
 cat > /etc/systemd/system/rewardshub.service <<UNIT

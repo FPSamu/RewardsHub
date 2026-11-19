@@ -22,3 +22,8 @@ output "worker_asg" {
 output "target_group_arn" {
   value = aws_lb_target_group.api.arn
 }
+
+output "frontend_url" {
+  description = "Frontend (sitio estático de S3, HTTP)."
+  value       = var.enable_frontend ? local.frontend_url : null
+}

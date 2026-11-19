@@ -118,3 +118,17 @@ variable "waf_rate_limit" {
   type        = number
   default     = 1000
 }
+
+# ── Frontend ────────────────────────────────────────────────────────────────
+
+variable "enable_frontend" {
+  description = "Despliega el frontend como sitio estático de S3 (el lab no permite CloudFront)."
+  type        = bool
+  default     = true
+}
+
+variable "frontend_dir" {
+  description = "Carpeta del repo del frontend (Vite). Se compila en tu máquina tal como esté en disco."
+  type        = string
+  default     = "../../../rewardshub_front"
+}

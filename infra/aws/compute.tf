@@ -16,6 +16,7 @@ locals {
     region             = var.region
     queue_url          = aws_sqs_queue.jobs.url
     visibility_seconds = var.sqs_visibility_seconds
+    frontend_url       = local.frontend_url
   }
 
   roles = {

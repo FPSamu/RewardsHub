@@ -72,7 +72,8 @@ case "${1:-}" in
     ;;
   status)
     check_creds
-    echo "API: $(out api_url)"
+    echo "API:      $(out api_url)"
+    echo "Frontend: $(terraform output -raw frontend_url 2>/dev/null || echo '-')"
     echo
     echo "── Target group (instancias de la API) ──"
     aws_ elbv2 describe-target-health --target-group-arn "$(out target_group_arn)" \
