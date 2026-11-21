@@ -436,6 +436,192 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "Escrituras idempotentes",
+			"description": "Endpoints que mueven saldo o canjean. Aceptan el header Idempotency-Key.\n\nPara web y apps móviles: generar UN UUID por acción del usuario (un escaneo, un canje) y reutilizarlo en todos los reintentos de esa acción. Si la primera petición ya se procesó, el reintento recibe la misma respuesta con el header Idempotent-Replayed: true en vez de sumar o restar otra vez.\n\n- Misma llave + otro body → 422\n- La petición original sigue en curso → 409 + Retry-After: 1 (reintentar)\n- Sin header → funciona como siempre (salvo IDEMPOTENCY_REQUIRED=true → 400)\n\nNota: {{$guid}} genera una llave nueva en cada envío de Postman; para probar el replay, copia un valor fijo en el header y envía dos veces.",
+			"item": [
+				{
+					"name": "Add Points/Stamps",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}",
+								"description": "Un UUID por acción (escaneo/canje). En un reintento de la MISMA acción se reenvía el mismo valor."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"purchaseAmount\": 250,\n  \"branchId\": \"{{branch_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/user-points/add",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"user-points",
+								"add"
+							]
+						},
+						"description": "Suma puntos por compra y/o sellos (stampData: [{ rewardSystemId, stampsCount }])."
+					}
+				},
+				{
+					"name": "Subtract Points/Stamps",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}",
+								"description": "Un UUID por acción (escaneo/canje). En un reintento de la MISMA acción se reenvía el mismo valor."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"pointsToSubtract\": 10,\n  \"rewardSystemId\": \"{{points_system_id}}\",\n  \"branchId\": \"{{branch_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/user-points/subtract",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"user-points",
+								"subtract"
+							]
+						},
+						"description": ""
+					}
+				},
+				{
+					"name": "Claim Delivery Code",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{user_token}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}",
+								"description": "Un UUID por acción (escaneo/canje). En un reintento de la MISMA acción se reenvía el mismo valor."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"ABC123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/delivery/claim",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"delivery",
+								"claim"
+							]
+						},
+						"description": "Lo llama el cliente (token de usuario). Un código se canjea una sola vez."
+					}
+				},
+				{
+					"name": "Activate Membership",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}",
+								"description": "Un UUID por acción (escaneo/canje). En un reintento de la MISMA acción se reenvía el mismo valor."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"planId\": \"{{membership_plan_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/memberships/activate",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"memberships",
+								"activate"
+							]
+						},
+						"description": ""
+					}
+				},
+				{
+					"name": "Redeem Daily Benefit",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{business_token}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}",
+								"description": "Un UUID por acción (escaneo/canje). En un reintento de la MISMA acción se reenvía el mismo valor."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"membershipId\": \"{{membership_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/memberships/redeem",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"memberships",
+								"redeem"
+							]
+						},
+						"description": ""
+					}
+				}
+			]
 		}
 	],
 	"variable": [
@@ -456,6 +642,36 @@
 		},
 		{
 			"key": "reward_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "user_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "user_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "branch_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "points_system_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "membership_plan_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "membership_id",
 			"value": "",
 			"type": "string"
 		}

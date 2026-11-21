@@ -10,6 +10,12 @@ import {
     getBranchComparison,
     getKpiSummary,
 } from '../services/businessStats.service';
+import { StatsMeta } from '../services/dailyStats.service';
+
+/** Con STATS_SOURCE=dynamo: hasta cuándo está al día la réplica, para que la UI muestre "datos al …". */
+const setFreshnessHeader = (res: Response, meta: StatsMeta) => {
+    if (meta.freshness) res.set('X-Data-Freshness', meta.freshness.toISOString());
+};
 
 /**
  * GET /business/stats
@@ -92,7 +98,9 @@ export const getTimeSeriesStatsHandler = async (req: Request, res: Response) => 
     const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 7), 90);
 
     try {
-        const stats = await getTimeSeriesStats(biz.id, days);
+        const meta: StatsMeta = {};
+        const stats = await getTimeSeriesStats(biz.id, days, meta);
+        setFreshnessHeader(res, meta);
         return res.json(stats);
     } catch (err) {
         console.error('[businessStats] Error fetching time series stats:', err);
@@ -152,7 +160,9 @@ export const getKpiSummaryHandler = async (req: Request, res: Response) => {
     const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 7), 90);
 
     try {
-        const summary = await getKpiSummary(biz.id, days);
+        const meta: StatsMeta = {};
+        const summary = await getKpiSummary(biz.id, days, meta);
+        setFreshnessHeader(res, meta);
         return res.json(summary);
     } catch (err) {
         console.error('[businessStats] Error fetching KPI summary:', err);
@@ -171,7 +181,9 @@ export const getBranchComparisonHandler = async (req: Request, res: Response) =>
     const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 7), 90);
 
     try {
-        const comparison = await getBranchComparison(biz.id, days);
+        const meta: StatsMeta = {};
+        const comparison = await getBranchComparison(biz.id, days, meta);
+        setFreshnessHeader(res, meta);
         return res.json(comparison);
     } catch (err) {
         console.error('[businessStats] Error fetching branch comparison:', err);

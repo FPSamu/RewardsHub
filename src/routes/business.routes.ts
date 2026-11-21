@@ -17,6 +17,7 @@ import { requireAdminPin } from '../middleware/adminPin.middleware';
 import adminPinRoutes from './adminPin.routes';
 import workShiftRoutes from './workShift.routes';
 import reportRoutes from './report.routes';
+import { passwordLimiter } from '../middleware/rateLimit.middleware';
 
 const router = Router();
 const upload = multer({
@@ -33,8 +34,8 @@ router.post('/logo', authenticateBusiness, requireAdminPin, upload.single('logo'
 
 // Email verification and password reset
 router.get('/verify-email', businessCtrl.verifyEmail);
-router.post('/forgot-password', businessCtrl.forgotPassword);
-router.post('/reset-password', businessCtrl.resetPassword);
+router.post('/forgot-password', passwordLimiter, businessCtrl.forgotPassword);
+router.post('/reset-password', passwordLimiter, businessCtrl.resetPassword);
 
 // Contraseña de sucursal para cajeros
 router.post('/branch-password', authenticateBusiness, businessCtrl.createBranchPassword);

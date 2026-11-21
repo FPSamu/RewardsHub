@@ -6,6 +6,9 @@ import * as authService from '../services/auth.service';
 import * as firebaseService from '../services/firebase.service';
 import { UserModel } from '../models/user.model';
 import { BusinessModel } from '../models/business.model';
+import { UserPointsModel } from '../models/userPoints.model';
+import { TransactionModel } from '../models/transaction.model';
+import { Types } from 'mongoose';
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 //
@@ -202,10 +205,30 @@ export const me = (req: Request, res: Response) => {
     });
 };
 
+/**
+ * ¿Puede quien llama ver al usuario `id`? El propio usuario, o un negocio que
+ * lo tiene como cliente (saldo en UserPoints o alguna transacción con él).
+ */
+const canViewUser = async (req: Request, id: string): Promise<boolean> => {
+    if (!Types.ObjectId.isValid(id)) return false;
+    if (req.business) {
+        const userId = new Types.ObjectId(id);
+        const businessId = new Types.ObjectId(req.business.id);
+        const [points, tx] = await Promise.all([
+            UserPointsModel.exists({ userId, 'businessPoints.businessId': businessId }),
+            TransactionModel.exists({ userId, businessId }),
+        ]);
+        return Boolean(points || tx);
+    }
+    return req.user?.id === id;
+};
+
 export const getUserById = async (req: Request, res: Response) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ message: 'user id is required' });
     try {
+        // 404 (no 403) para no revelar qué ids existen
+        if (!(await canViewUser(req, id))) return res.status(404).json({ message: 'user not found' });
         const user = await userService.findUserById(id);
         if (!user) return res.status(404).json({ message: 'user not found' });
         return res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture, createdAt: user.createdAt });

@@ -10,6 +10,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as authCtrl from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
+import { loginLimiter, registerLimiter, passwordLimiter } from '../middleware/rateLimit.middleware';
 
 const router = Router();
 
@@ -20,9 +21,9 @@ const upload = multer({
     },
 });
 
-router.post('/check-email', authCtrl.checkEmail);
-router.post('/register', authCtrl.register);
-router.post('/login', authCtrl.login);
+router.post('/check-email', registerLimiter, authCtrl.checkEmail);
+router.post('/register', registerLimiter, authCtrl.register);
+router.post('/login', loginLimiter, authCtrl.login);
 router.get('/me', authenticate, authCtrl.me);
 router.put('/me', authenticate, authCtrl.updateMe);
 router.post('/profile-picture', authenticate, upload.single('profilePicture'), authCtrl.uploadProfilePicture);
@@ -30,11 +31,11 @@ router.post('/profile-picture', authenticate, upload.single('profilePicture'), a
 // Email verification and password reset
 router.get('/verify-email', authCtrl.verifyEmail);
 router.post('/resend-verification', authenticate, authCtrl.resendVerification);
-router.post('/forgot-password', authCtrl.forgotPassword);
-router.post('/reset-password', authCtrl.resetPassword);
+router.post('/forgot-password', passwordLimiter, authCtrl.forgotPassword);
+router.post('/reset-password', passwordLimiter, authCtrl.resetPassword);
 
 // Cashier login (email + contraseña de sucursal, sin Firebase)
-router.post('/cashier-login', authCtrl.cashierLogin);
+router.post('/cashier-login', loginLimiter, authCtrl.cashierLogin);
 
 // FCM token
 router.put('/fcm-token', authenticate, authCtrl.updateFcmToken);
@@ -43,7 +44,7 @@ router.put('/fcm-token', authenticate, authCtrl.updateFcmToken);
 router.post('/refresh', authCtrl.refresh);
 router.post('/logout', authCtrl.logout);
 
-// Get user by ID (public)
-router.get('/:id', authCtrl.getUserById);
+// Get user by ID: solo el propio usuario o un negocio del que es cliente
+router.get('/:id', authenticate, authCtrl.getUserById);
 
 export default router;

@@ -19,7 +19,7 @@ variable "aws_profile" {
 variable "env_file" {
   description = "Ruta al .env del backend. Se sube a un bucket privado y las instancias lo descargan."
   type        = string
-  default     = "../../.env"
+  default     = "../../.env.lab"
 }
 
 variable "instance_profile_name" {
@@ -44,6 +44,148 @@ variable "node_version" {
   description = "≥ 22.12 (o ≥ 20.19): uuid@13 es solo ESM y se carga con require()."
   type        = string
   default     = "22.12.0"
+}
+
+# ── Base de datos ───────────────────────────────────────────────────────────
+
+variable "lab_db_name" {
+  description = "Base de MongoDB que usan las instancias del lab (DB_NAME). Separada de la de producción aunque el MONGO_URI del .env sea el mismo. \"\" = la base del MONGO_URI (no recomendado)."
+  type        = string
+  default     = "rewardshub_lab"
+
+  validation {
+    condition     = var.lab_db_name == "" || can(regex("(_lab|_test|test)$", var.lab_db_name))
+    error_message = "lab_db_name debe terminar en _lab, _test o test (es lo que acepta assertNonProductionDb)."
+  }
+}
+
+variable "mongo_max_pool_size" {
+  description = "Conexiones a Mongo por proceso (MONGO_MAX_POOL_SIZE). El default del driver es 100; con hasta 7 procesos rebasaría el límite de un cluster compartido de Atlas."
+  type        = number
+  default     = 20
+}
+
+# ── Banderas de la app (todas apagadas por defecto) ─────────────────────────
+
+variable "geo_query_mode" {
+  description = "GEO_QUERY_MODE de la API: \"geo\" usa el índice 2dsphere en el mapa (/business/nearby, /in-bounds, /all); \"legacy\" = consulta por recuadro de siempre. La base del lab ya trae geo si se llenó con npm run seed:lab."
+  type        = string
+  default     = "legacy"
+
+  validation {
+    condition     = contains(["legacy", "geo"], var.geo_query_mode)
+    error_message = "geo_query_mode debe ser \"legacy\" o \"geo\"."
+  }
+}
+
+variable "stats_source" {
+  description = "STATS_SOURCE de la API: \"daily\" lee las estadísticas del dashboard de daily_stats (+ hoy en vivo); \"dynamo\" de la réplica en DynamoDB (requiere enable_dynamo; respaldo en Mongo) y los reportes también; \"live\" = agregación completa de siempre."
+  type        = string
+  default     = "live"
+
+  validation {
+    condition     = contains(["live", "daily", "dynamo"], var.stats_source)
+    error_message = "stats_source debe ser \"live\", \"daily\" o \"dynamo\"."
+  }
+}
+
+# ── Redis (P4) ──────────────────────────────────────────────────────────────
+
+variable "redis_mode" {
+  description = "\"off\" (default) | \"elasticache\" | \"ec2\" (plan B si el lab no permite ElastiCache). Ver README → Limitaciones: la prueba de ElastiCache está pendiente."
+  type        = string
+  default     = "off"
+
+  validation {
+    condition     = contains(["off", "elasticache", "ec2"], var.redis_mode)
+    error_message = "redis_mode debe ser \"off\", \"elasticache\" o \"ec2\"."
+  }
+}
+
+variable "redis_node_type" {
+  description = "Tipo de nodo de ElastiCache (modo elasticache)."
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+variable "redis_engine_version" {
+  description = "Versión de Redis en ElastiCache (modo elasticache). Debe corresponder al parameter group default.redis7."
+  type        = string
+  default     = "7.1"
+}
+
+variable "redis_instance_type" {
+  description = "Instancia EC2 para Redis/Valkey (modo ec2)."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "enable_rate_limits" {
+  description = "RATE_LIMITS=on en la API: límites en login/registro/recuperar contraseña, PIN de administrador y reportes. Sin Redis cada instancia cuenta por su lado; con Redis el límite es global."
+  type        = bool
+  default     = true
+}
+
+variable "cache_bizmap_ttl" {
+  description = "Segundos que vive en Redis la caché del mapa de negocios (CACHE_BIZMAP_TTL)."
+  type        = number
+  default     = 120
+}
+
+# ── DynamoDB (P5) ───────────────────────────────────────────────────────────
+
+variable "enable_dynamo" {
+  description = "Réplica de lectura en DynamoDB (tablas daily-stats y transactions) + job replicate-dynamo. La prueba en el lab está pendiente: ver README → Limitaciones."
+  type        = bool
+  default     = false
+}
+
+variable "replicate_schedule" {
+  description = "Cada cuánto EventBridge encola replicate-dynamo (solo con enable_dynamo). \"\" lo apaga."
+  type        = string
+  default     = "rate(10 minutes)"
+}
+
+variable "backlog_age_seconds" {
+  description = "La alarma jobs-backlog agrega un worker cuando el mensaje más viejo de la cola lleva más de esto esperando (2 minutos seguidos). Con trabajos cada 10 min, contar mensajes visibles hacía escalar sin necesidad."
+  type        = number
+  default     = 120
+}
+
+# ── Observabilidad (P6) ─────────────────────────────────────────────────────
+
+variable "enable_grafana" {
+  description = "Instancia t3.micro con Grafana OSS sobre CloudWatch. Requiere admin_cidr."
+  type        = bool
+  default     = false
+}
+
+variable "admin_cidr" {
+  description = "Tu IP pública en CIDR (p. ej. \"203.0.113.7/32\"): la única que puede abrir Grafana (puerto 3000). Obligatoria con enable_grafana."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.admin_cidr == null || can(cidrhost(var.admin_cidr, 0))
+    error_message = "admin_cidr debe ser un CIDR válido, p. ej. \"203.0.113.7/32\"."
+  }
+}
+
+variable "grafana_instance_type" {
+  type    = string
+  default = "t3.micro"
+}
+
+variable "grafana_anonymous_viewer" {
+  description = "Permite ver los dashboards sin login (rol Viewer), útil para la demo en clase. Sigue limitado a admin_cidr."
+  type        = bool
+  default     = false
+}
+
+variable "enable_app_metrics" {
+  description = "METRICS_ENABLED=true en la API y los workers: publican métricas propias (namespace RewardsHub) con PutMetricData cada 60 s."
+  type        = bool
+  default     = false
 }
 
 # ── Escalado ────────────────────────────────────────────────────────────────
@@ -105,6 +247,18 @@ variable "engagement_schedule" {
   default     = "cron(0 19 * * ? *)"
 }
 
+variable "daily_stats_schedule" {
+  description = "Cron de EventBridge (UTC) del job daily-stats: recalcula los últimos 2 días UTC de cada negocio en daily_stats. 06:15 UTC ≈ 00:15 Ciudad de México. \"\" lo apaga."
+  type        = string
+  default     = "cron(15 6 * * ? *)"
+}
+
+variable "reconcile_schedule" {
+  description = "Cron de EventBridge (UTC) del job reconcile-balances (solo reporta, no corrige). \"\" lo apaga."
+  type        = string
+  default     = "cron(30 7 * * ? *)"
+}
+
 # ── Rate limiting ───────────────────────────────────────────────────────────
 
 variable "enable_waf" {
@@ -128,7 +282,7 @@ variable "enable_frontend" {
 }
 
 variable "frontend_dir" {
-  description = "Carpeta del repo del frontend (Vite). Se compila en tu máquina tal como esté en disco."
+  description = "Carpeta del repo del frontend (Vite): ruta absoluta o relativa a infra/aws. Se compila en tu máquina tal como esté en disco (npm de tu PATH: corre ./lab.sh con nvm cargado)."
   type        = string
   default     = "../../../rewardshub_front"
 }

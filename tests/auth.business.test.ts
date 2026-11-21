@@ -1,107 +1,104 @@
+/**
+ * Auth de negocios: el registro y el login son los mismos endpoints que los
+ * de usuario (/auth/register con role 'business', /auth/login unificado);
+ * refresh y logout también viven en /auth. Ya no existen /business/register,
+ * /business/login ni /business/refresh.
+ *
+ * Arranca su propio MongoDB en memoria y usa un Firebase falso.
+ */
 import request from 'supertest';
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../src/app';
 import { BusinessModel } from '../src/models/business.model';
-import { UserModel } from '../src/models/user.model';
-import { connectTestDb, disconnectTestDb } from './helpers/db';
+import { fakeIdToken } from './helpers/fakeFirebase';
 
+// stripe.service instancia el SDK al importarse y aborta sin STRIPE_SECRET_KEY.
+jest.mock('stripe', () => jest.fn().mockImplementation(() => ({})));
+jest.mock('../src/services/firebase.service', () => require('./helpers/fakeFirebase').firebaseMock);
 jest.mock('../src/services/email.service');
 
-const BIZ_EMAIL = `test-biz-${Date.now()}@test.com`;
+const BIZ_EMAIL = 'test-biz@test.com';
 const BIZ_USERNAME = 'testbusiness';
-const PASSWORD = 'Test1234!';
+const BIZ_ID_TOKEN = fakeIdToken('uid-biz-1', BIZ_EMAIL);
 
-// User account used for cross-role isolation tests
-const USER_EMAIL = `test-user-iso-${Date.now()}@test.com`;
+// Usuario para los tests de aislamiento entre roles
+const USER_EMAIL = 'test-user-iso@test.com';
+const USER_ID_TOKEN = fakeIdToken('uid-user-iso', USER_EMAIL);
 
+let mongod: MongoMemoryServer;
 let bizAccessToken: string;
 let bizRefreshToken: string;
 let userAccessToken: string;
 
 beforeAll(async () => {
-    await connectTestDb();
+    mongod = await MongoMemoryServer.create();
+    await mongoose.connect(mongod.getUri(), { dbName: 'auth-business-test' });
 
-    // Pre-crear un usuario para los tests de aislamiento
     const res = await request(app)
         .post('/auth/register')
-        .send({ username: 'isouser', email: USER_EMAIL, password: PASSWORD });
+        .send({ idToken: USER_ID_TOKEN, role: 'user', username: 'isouser' });
     userAccessToken = res.body.token;
-});
+}, 120_000);
 
 afterAll(async () => {
-    await BusinessModel.deleteOne({ email: BIZ_EMAIL });
-    await UserModel.deleteOne({ email: USER_EMAIL });
-    await disconnectTestDb();
+    await mongoose.disconnect();
+    await mongod.stop();
 });
 
+const decodeRole = (token: string) =>
+    JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).role;
+
+// Los describe comparten estado en orden: registro → login → me → refresh → logout.
+
 describe('Business — register', () => {
-    it('crea cuenta y devuelve tokens', async () => {
+    it('crea cuenta y devuelve tokens con role: business', async () => {
         const res = await request(app)
-            .post('/business/register')
-            .send({ username: BIZ_USERNAME, email: BIZ_EMAIL, password: PASSWORD });
+            .post('/auth/register')
+            .send({ idToken: BIZ_ID_TOKEN, role: 'business', username: BIZ_USERNAME });
 
         expect(res.status).toBe(201);
-        expect(res.body.business.email).toBe(BIZ_EMAIL);
-        expect(res.body.business.username).toBe(BIZ_USERNAME);
-        expect(res.body.token).toBeDefined();
+        expect(res.body.role).toBe('business');
+        expect(res.body.user.email).toBe(BIZ_EMAIL);
+        expect(res.body.user.username).toBe(BIZ_USERNAME);
+        expect(decodeRole(res.body.token)).toBe('business');
         expect(res.body.refreshToken).toBeDefined();
 
-        bizAccessToken = res.body.token;
-        bizRefreshToken = res.body.refreshToken;
+        const doc = await BusinessModel.findOne({ email: BIZ_EMAIL }).lean();
+        expect(doc!.googleUid).toBe('uid-biz-1');
     });
 
     it('rechaza email duplicado', async () => {
         const res = await request(app)
-            .post('/business/register')
-            .send({ username: BIZ_USERNAME, email: BIZ_EMAIL, password: PASSWORD });
-
+            .post('/auth/register')
+            .send({ idToken: BIZ_ID_TOKEN, role: 'business', username: BIZ_USERNAME });
         expect(res.status).toBe(409);
-    });
-
-    it('rechaza campos faltantes', async () => {
-        const res = await request(app)
-            .post('/business/register')
-            .send({ email: BIZ_EMAIL });
-
-        expect(res.status).toBe(400);
     });
 });
 
 describe('Business — login', () => {
-    it('devuelve tokens con role: business en el JWT', async () => {
-        const res = await request(app)
-            .post('/business/login')
-            .send({ email: BIZ_EMAIL, password: PASSWORD });
+    it('el login unificado encuentra al negocio', async () => {
+        const res = await request(app).post('/auth/login').send({ idToken: BIZ_ID_TOKEN });
 
         expect(res.status).toBe(200);
+        expect(res.body.role).toBe('business');
         expect(res.body.user.email).toBe(BIZ_EMAIL);
-        expect(res.body.token).toBeDefined();
-        expect(res.body.refreshToken).toBeDefined();
-
-        const payload = JSON.parse(Buffer.from(res.body.token.split('.')[1], 'base64url').toString());
-        expect(payload.role).toBe('business');
+        expect(decodeRole(res.body.token)).toBe('business');
 
         bizAccessToken = res.body.token;
         bizRefreshToken = res.body.refreshToken;
-    });
-
-    it('rechaza contraseña incorrecta', async () => {
-        const res = await request(app)
-            .post('/business/login')
-            .send({ email: BIZ_EMAIL, password: 'wrongpassword' });
-
-        expect(res.status).toBe(401);
     });
 });
 
 describe('Business — /business/me', () => {
     it('devuelve datos del negocio autenticado', async () => {
-        const res = await request(app)
-            .get('/business/me')
-            .set('Authorization', `Bearer ${bizAccessToken}`);
+        const res = await request(app).get('/business/me').set('Authorization', `Bearer ${bizAccessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.email).toBe(BIZ_EMAIL);
         expect(res.body.username).toBe(BIZ_USERNAME);
+        expect(res.body.registeredWithGoogle).toBe(true);
+        expect(res.body.passHash).toBeUndefined();
     });
 
     it('rechaza sin token', async () => {
@@ -110,116 +107,50 @@ describe('Business — /business/me', () => {
     });
 });
 
-describe('Business — refresh', () => {
-    it('devuelve nuevo par de tokens', async () => {
-        const res = await request(app)
-            .post('/business/refresh')
-            .send({ refreshToken: bizRefreshToken });
+describe('Business — refresh y logout', () => {
+    it('refresh conserva role: business', async () => {
+        const res = await request(app).post('/auth/refresh').send({ refreshToken: bizRefreshToken });
 
         expect(res.status).toBe(200);
-        expect(res.body.token).toBeDefined();
-        expect(res.body.refreshToken).toBeDefined();
-
-        bizAccessToken = res.body.token;
+        expect(decodeRole(res.body.token)).toBe('business');
         bizRefreshToken = res.body.refreshToken;
     });
 
-    it('rechaza refresh token inválido', async () => {
-        const res = await request(app)
-            .post('/business/refresh')
-            .send({ refreshToken: 'garbage.token.here' });
-
-        expect(res.status).toBe(401);
-    });
-});
-
-describe('Business — logout', () => {
-    it('revoca el refresh token', async () => {
-        const res = await request(app)
-            .post('/business/logout')
-            .send({ refreshToken: bizRefreshToken });
-
+    it('logout revoca el refresh token', async () => {
+        const res = await request(app).post('/auth/logout').send({ refreshToken: bizRefreshToken });
         expect(res.status).toBe(200);
         expect(res.body.ok).toBe(true);
-    });
 
-    it('no puede refrescar después de logout', async () => {
-        const res = await request(app)
-            .post('/business/refresh')
-            .send({ refreshToken: bizRefreshToken });
-
-        expect(res.status).toBe(401);
+        const again = await request(app).post('/auth/refresh').send({ refreshToken: bizRefreshToken });
+        expect(again.status).toBe(401);
     });
 });
 
-describe('Login unificado (/auth/login)', () => {
-    it('encuentra un negocio desde el endpoint de usuario', async () => {
-        const res = await request(app)
-            .post('/auth/login')
-            .send({ email: BIZ_EMAIL, password: PASSWORD });
-
-        expect(res.status).toBe(200);
-        expect(res.body.role).toBe('business');
-        expect(res.body.user.email).toBe(BIZ_EMAIL);
-
-        const payload = JSON.parse(Buffer.from(res.body.token.split('.')[1], 'base64url').toString());
-        expect(payload.role).toBe('business');
-    });
-
+describe('Aislamiento de roles', () => {
     it('email de negocio no se puede registrar como usuario', async () => {
         const res = await request(app)
             .post('/auth/register')
-            .send({ username: 'cualquiera', email: BIZ_EMAIL, password: PASSWORD });
-
+            .send({ idToken: fakeIdToken('uid-otro', BIZ_EMAIL), role: 'user', username: 'cualquiera' });
         expect(res.status).toBe(409);
     });
 
     it('email de usuario no se puede registrar como negocio', async () => {
         const res = await request(app)
-            .post('/business/register')
-            .send({ username: 'cualquiera', email: USER_EMAIL, password: PASSWORD });
-
+            .post('/auth/register')
+            .send({ idToken: fakeIdToken('uid-otro-2', USER_EMAIL), role: 'business', username: 'cualquiera' });
         expect(res.status).toBe(409);
-    });
-});
-
-describe('Aislamiento de roles', () => {
-    // Necesitamos un token de negocio válido — hacer login de nuevo
-    beforeAll(async () => {
-        const res = await request(app)
-            .post('/business/login')
-            .send({ email: BIZ_EMAIL, password: PASSWORD });
-        bizAccessToken = res.body.token;
-        bizRefreshToken = res.body.refreshToken;
     });
 
     it('token de usuario no accede a /business/me', async () => {
-        const res = await request(app)
-            .get('/business/me')
-            .set('Authorization', `Bearer ${userAccessToken}`);
-
+        const res = await request(app).get('/business/me').set('Authorization', `Bearer ${userAccessToken}`);
         expect(res.status).toBe(401);
     });
 
-    it('refresh token de negocio es rechazado en /auth/refresh', async () => {
+    it('token de usuario no accede a rutas de negocio', async () => {
         const res = await request(app)
-            .post('/auth/refresh')
-            .send({ refreshToken: bizRefreshToken });
-
-        expect(res.status).toBe(401);
-    });
-
-    it('refresh token de usuario es rechazado en /business/refresh', async () => {
-        // Primero obtener un refresh token de usuario fresco
-        const loginRes = await request(app)
-            .post('/auth/login')
-            .send({ email: USER_EMAIL, password: PASSWORD });
-        const userRefreshToken = loginRes.body.refreshToken;
-
-        const res = await request(app)
-            .post('/business/refresh')
-            .send({ refreshToken: userRefreshToken });
-
+            .post('/user-points/add')
+            .set('Authorization', `Bearer ${userAccessToken}`)
+            .send({ userId: new mongoose.Types.ObjectId().toString(), purchaseAmount: 10 });
         expect(res.status).toBe(401);
     });
 });

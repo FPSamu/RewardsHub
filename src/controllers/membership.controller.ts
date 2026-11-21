@@ -1,9 +1,9 @@
-import { Request, Response } from 'express';
-import { Types } from 'mongoose';
+import { NextFunction, Request, Response } from 'express';
 import { MembershipPlanModel } from '../models/membershipPlan.model';
 import { ClientMembershipModel } from '../models/clientMembership.model';
 import { BusinessModel } from '../models/business.model';
 import { UserModel } from '../models/user.model';
+import { withTransaction } from '../db/withTransaction';
 
 // ---------------------------------------------------------------------------
 // Plan management (business authenticated)
@@ -103,106 +103,137 @@ export const getClientMembership = async (req: Request, res: Response): Promise<
 };
 
 /** POST /memberships/activate — cajero activa membresía para un cliente */
-export const activateMembership = async (req: Request, res: Response): Promise<void> => {
-    const business = req.business!;
-    const { userId, planId } = req.body;
+export const activateMembership = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const business = req.business!;
+        const { userId, planId } = req.body;
 
-    if (!userId || !planId) {
-        res.status(400).json({ message: 'userId y planId son requeridos' });
-        return;
+        if (!userId || !planId) {
+            res.status(400).json({ message: 'userId y planId son requeridos' });
+            return;
+        }
+
+        const user = await UserModel.findById(userId).lean();
+        if (!user) { res.status(404).json({ message: 'Usuario no encontrado' }); return; }
+
+        const plan = await MembershipPlanModel.findOne({ _id: planId, businessId: business.id, isActive: true });
+        if (!plan) { res.status(404).json({ message: 'Plan no encontrado' }); return; }
+
+        // Vencer las viejas + crear la nueva en una transacción. El índice único
+        // parcial { userId, planId } con status 'active' impide que dos
+        // activaciones simultáneas del mismo plan creen dos membresías.
+        const membership = await withTransaction(async (session) => {
+            // Auto-expire old memberships
+            await ClientMembershipModel.updateMany(
+                { userId, businessId: business.id, status: 'active', endDate: { $lt: new Date() } },
+                { $set: { status: 'expired' } },
+                { session }
+            );
+
+            // Allow multiple active memberships, but not the same plan twice
+            const existing = await ClientMembershipModel.findOne(
+                { userId, businessId: business.id, planId: plan._id, status: 'active' }, null, { session }
+            );
+            if (existing) return null;
+
+            const startDate = new Date();
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + plan.durationDays);
+
+            const [created] = await ClientMembershipModel.create([{
+                userId,
+                businessId: business.id,
+                planId: plan._id,
+                planSnapshot: {
+                    name: plan.name,
+                    benefit: plan.benefit,
+                    durationDays: plan.durationDays,
+                    price: plan.price,
+                },
+                startDate,
+                endDate,
+                status: 'active',
+                lastRedeemedDate: null,
+                activatedAt: new Date(),
+                activatedByBusinessId: business.id,
+            }], { session });
+            return created;
+        }).catch((err) => {
+            // Otra activación del mismo plan ganó la carrera
+            if (err?.code === 11000) return null;
+            throw err;
+        });
+
+        if (!membership) {
+            res.status(409).json({ message: 'El cliente ya tiene una membresía activa con este plan' });
+            return;
+        }
+
+        res.status(201).json({
+            membership,
+            userName: (user as any).username,
+            message: `Membresía "${plan.name}" activada para ${(user as any).username}`,
+        });
+    } catch (err) {
+        next(err);
     }
-
-    const user = await UserModel.findById(userId).lean();
-    if (!user) { res.status(404).json({ message: 'Usuario no encontrado' }); return; }
-
-    const plan = await MembershipPlanModel.findOne({ _id: planId, businessId: business.id, isActive: true });
-    if (!plan) { res.status(404).json({ message: 'Plan no encontrado' }); return; }
-
-    // Auto-expire old memberships
-    await ClientMembershipModel.updateMany(
-        { userId, businessId: business.id, status: 'active', endDate: { $lt: new Date() } },
-        { $set: { status: 'expired' } }
-    );
-
-    // Allow multiple active memberships, but not the same plan twice
-    const existing = await ClientMembershipModel.findOne({ userId, businessId: business.id, planId: plan._id, status: 'active' });
-    if (existing) {
-        res.status(409).json({ message: 'El cliente ya tiene una membresía activa con este plan' });
-        return;
-    }
-
-    const startDate = new Date();
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + plan.durationDays);
-
-    const membership = await ClientMembershipModel.create({
-        userId,
-        businessId: business.id,
-        planId: plan._id,
-        planSnapshot: {
-            name: plan.name,
-            benefit: plan.benefit,
-            durationDays: plan.durationDays,
-            price: plan.price,
-        },
-        startDate,
-        endDate,
-        status: 'active',
-        lastRedeemedDate: null,
-        activatedAt: new Date(),
-        activatedByBusinessId: business.id,
-    });
-
-    res.status(201).json({
-        membership,
-        userName: (user as any).username,
-        message: `Membresía "${plan.name}" activada para ${(user as any).username}`,
-    });
 };
 
 /** POST /memberships/redeem — cajero canjea el beneficio del día */
-export const redeemDailyBenefit = async (req: Request, res: Response): Promise<void> => {
-    const business = req.business!;
-    const { userId, membershipId } = req.body;
+export const redeemDailyBenefit = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const business = req.business!;
+        const { userId, membershipId } = req.body;
 
-    if (!userId || !membershipId) {
-        res.status(400).json({ message: 'userId y membershipId son requeridos' });
-        return;
+        if (!userId || !membershipId) {
+            res.status(400).json({ message: 'userId y membershipId son requeridos' });
+            return;
+        }
+
+        // Un solo update condicional: activa, sin vencer y sin canje hoy (UTC).
+        // Antes era leer → revisar → save(), y dos cajeros a la vez canjeaban dos veces.
+        const now = new Date();
+        const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 3600 * 1000);
+        const owner = { _id: membershipId, userId, businessId: business.id, status: 'active' };
+
+        const membership = await ClientMembershipModel.findOneAndUpdate(
+            {
+                ...owner,
+                endDate: { $gte: now },
+                $or: [
+                    { lastRedeemedDate: null },
+                    { lastRedeemedDate: { $lt: startOfToday } },
+                    { lastRedeemedDate: { $gte: startOfTomorrow } },
+                ],
+            },
+            { $set: { lastRedeemedDate: now, lastRedeemedBusinessName: business.username ?? null } },
+            { new: true }
+        );
+
+        if (!membership) {
+            // Sin match: se relee para dar la misma respuesta que antes.
+            const current = await ClientMembershipModel.findOne(owner);
+            if (!current) {
+                res.status(404).json({ message: 'Membresía no encontrada o inactiva' });
+                return;
+            }
+            if (current.endDate < new Date()) {
+                await ClientMembershipModel.updateOne({ _id: current._id, status: 'active' }, { $set: { status: 'expired' } });
+                res.status(409).json({ message: 'La membresía ha vencido' });
+                return;
+            }
+            res.status(409).json({ message: 'El beneficio de hoy ya fue canjeado', redeemedToday: true });
+            return;
+        }
+
+        res.json({
+            message: `Beneficio canjeado: ${membership.planSnapshot.benefit}`,
+            benefit: membership.planSnapshot.benefit,
+        });
+    } catch (err) {
+        next(err);
     }
-
-    const membership = await ClientMembershipModel.findOne({
-        _id: membershipId,
-        userId,
-        businessId: business.id,
-        status: 'active',
-    });
-
-    if (!membership) {
-        res.status(404).json({ message: 'Membresía no encontrada o inactiva' });
-        return;
-    }
-
-    if (membership.endDate < new Date()) {
-        membership.status = 'expired';
-        await membership.save();
-        res.status(409).json({ message: 'La membresía ha vencido' });
-        return;
-    }
-
-    const todayUTC = todayUTCString();
-    if (membership.lastRedeemedDate && toUTCString(membership.lastRedeemedDate) === todayUTC) {
-        res.status(409).json({ message: 'El beneficio de hoy ya fue canjeado', redeemedToday: true });
-        return;
-    }
-
-    membership.lastRedeemedDate = new Date();
-    membership.lastRedeemedBusinessName = (business as any).name ?? null;
-    await membership.save();
-
-    res.json({
-        message: `Beneficio canjeado: ${membership.planSnapshot.benefit}`,
-        benefit: membership.planSnapshot.benefit,
-    });
 };
 
 // ---------------------------------------------------------------------------

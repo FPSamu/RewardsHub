@@ -50,10 +50,35 @@ const initializeTransporter = (): Transporter => {
 };
 
 /**
+ * ¿Hay credenciales para mandar correos? Sin ellas (p. ej. en el lab) la app
+ * funciona igual: solo los envíos fallan al instante, sin intentar conectarse.
+ */
+export const isEmailConfigured = (): boolean =>
+    Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) &&
+    (process.env.EMAIL_SERVICE !== 'smtp' || Boolean(process.env.SMTP_HOST));
+
+export class EmailNotConfiguredError extends Error {
+    constructor() {
+        super('El correo no está configurado (EMAIL_USER / EMAIL_PASSWORD): envío deshabilitado');
+        this.name = 'EmailNotConfiguredError';
+    }
+}
+
+let warnedNotConfigured = false;
+
+/**
  * Función central para enviar correos usando Nodemailer.
  * Soporta HTML y texto plano.
  */
 export const sendEmail = async (to: string, subject: string, html: string, text?: string) => {
+    if (!isEmailConfigured()) {
+        if (!warnedNotConfigured) {
+            warnedNotConfigured = true;
+            console.warn('⚠️  [Email] EMAIL_USER / EMAIL_PASSWORD no configurados: no se envían correos (verificación, recuperar contraseña, PIN, avisos).');
+        }
+        throw new EmailNotConfiguredError();
+    }
+
     const from = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'rewardshubplat@gmail.com';
 
     try {

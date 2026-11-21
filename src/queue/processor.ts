@@ -2,10 +2,20 @@
  * Lógica de procesamiento de un mensaje, separada del loop de SQS para poder
  * probarla sin AWS ni Mongo (las dependencias se inyectan).
  */
-import { JobMessage, JobType, jobRunKey, parseJobMessage } from './jobs';
+import { JobMessage, JobParamsMap, JobType, jobRunKey, parseJobMessage } from './jobs';
 import { AcquireResult } from './jobLock';
 
-export type JobHandlers = Record<JobType, () => Promise<unknown>>;
+/** Lo que recibe cada handler además de sus params. */
+export interface JobContext {
+    /** Llave del trabajo (JobRun.key); sirve como id de corrida (p. ej. reconcile). */
+    key: string;
+    scheduledAt: string;
+}
+
+/** Cada tipo recibe sus propios params (undefined si el mensaje no trae). */
+export type JobHandlers = {
+    [T in JobType]: (params: JobParamsMap[T] | undefined, ctx: JobContext) => Promise<unknown>;
+};
 
 export interface ProcessorDeps {
     handlers: JobHandlers;
@@ -46,7 +56,8 @@ export const processMessage = async (body: string | undefined, deps: ProcessorDe
 
     try {
         log.log(`▶️  [Worker] Ejecutando ${key}`);
-        const result = await deps.handlers[job.type]();
+        const handler = deps.handlers[job.type] as (params: unknown, ctx: JobContext) => Promise<unknown>;
+        const result = await handler(job.params, { key, scheduledAt: job.scheduledAt });
         await deps.complete(key, deps.workerId, result);
         log.log(`✅ [Worker] ${key} terminado`, result);
         return { action: 'delete', reason: 'done', job, result };

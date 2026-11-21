@@ -31,10 +31,42 @@ chown -R rewardshub:rewardshub /opt/rewardshub
 # sobreescribe variables existentes, así que ganan sobre el .env.
 cat > /etc/rewardshub.env <<ENV
 PORT=3000
+# Días de las estadísticas = días UTC (daily_stats). Render ya corre en UTC.
+TZ=UTC
 TRUST_PROXY=1
 SQS_QUEUE_URL=${queue_url}
 SQS_REGION=${region}
 SQS_VISIBILITY_SECONDS=${visibility_seconds}
+%{ if db_name != "" ~}
+# Base propia del lab: mongoose.connect({ dbName }) ignora la base del MONGO_URI
+DB_NAME=${db_name}
+%{ endif ~}
+MONGO_MAX_POOL_SIZE=${mongo_pool_size}
+%{ if geo_query_mode != "legacy" ~}
+GEO_QUERY_MODE=${geo_query_mode}
+%{ endif ~}
+%{ if stats_source != "live" ~}
+STATS_SOURCE=${stats_source}
+%{ endif ~}
+%{ if redis_url != "" ~}
+# Redis (redis_mode): caché del mapa + rate limits compartidos. Si no responde, la API sigue (falla abierta).
+REDIS_URL=${redis_url}
+CACHE_BIZMAP_TTL=${cache_bizmap_ttl}
+%{ endif ~}
+%{ if rate_limits ~}
+RATE_LIMITS=on
+%{ endif ~}
+%{ if ddb_daily_stats != "" ~}
+# Réplica en DynamoDB (enable_dynamo): la llena replicate-dynamo; la leen las
+# estadísticas y los reportes con STATS_SOURCE=dynamo (con respaldo en Mongo).
+DDB_DAILY_STATS_TABLE=${ddb_daily_stats}
+DDB_TRANSACTIONS_TABLE=${ddb_transactions}
+DDB_REGION=${region}
+%{ endif ~}
+%{ if app_metrics ~}
+# Métricas propias en CloudWatch (namespace RewardsHub) con el rol de la instancia
+METRICS_ENABLED=true
+%{ endif ~}
 %{ if frontend_url != "" ~}
 ALLOWED_ORIGINS=${frontend_url}
 FRONTEND_URL=${frontend_url}

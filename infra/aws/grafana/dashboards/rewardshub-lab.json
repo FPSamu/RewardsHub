@@ -1,0 +1,2068 @@
+{
+  "uid": "rewardshub-lab",
+  "title": "RewardsHub · Lab",
+  "description": "ALB, WAF, Auto Scaling, SQS, Redis, DynamoDB y métricas propias de la app. Los nombres de los recursos los pone user_data_grafana.sh.tftpl.",
+  "tags": [
+    "rewardshub",
+    "sistemas-escalables"
+  ],
+  "timezone": "browser",
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Entrada (ALB + WAF)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Peticiones al ALB",
+      "description": "RequestCount por minuto.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/ApplicationELB",
+          "metricName": "RequestCount",
+          "dimensions": {
+            "LoadBalancer": "$alb"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "peticiones/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Tiempo de respuesta (p50 / p95)",
+      "description": "",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/ApplicationELB",
+          "metricName": "TargetResponseTime",
+          "dimensions": {
+            "LoadBalancer": "$alb"
+          },
+          "statistic": "p50",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/ApplicationELB",
+          "metricName": "TargetResponseTime",
+          "dimensions": {
+            "LoadBalancer": "$alb"
+          },
+          "statistic": "p95",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Errores 5xx",
+      "description": "",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/ApplicationELB",
+          "metricName": "HTTPCode_Target_5XX_Count",
+          "dimensions": {
+            "LoadBalancer": "$alb"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "5xx de la API"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/ApplicationELB",
+          "metricName": "HTTPCode_ELB_5XX_Count",
+          "dimensions": {
+            "LoadBalancer": "$alb"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "5xx del ALB"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Instancias sanas en el target group",
+      "description": "",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/ApplicationELB",
+          "metricName": "HealthyHostCount",
+          "dimensions": {
+            "LoadBalancer": "$alb",
+            "TargetGroup": "$target_group"
+          },
+          "statistic": "Minimum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "healthy"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/ApplicationELB",
+          "metricName": "UnHealthyHostCount",
+          "dimensions": {
+            "LoadBalancer": "$alb",
+            "TargetGroup": "$target_group"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "unhealthy"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "WAF: bloqueadas por rate-limit-per-ip",
+      "description": "Vacío si enable_waf = false.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/WAFV2",
+          "metricName": "BlockedRequests",
+          "dimensions": {
+            "WebACL": "$waf_acl",
+            "Rule": "$waf_rule",
+            "Region": "$region"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "bloqueadas (429)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Cómputo (Auto Scaling)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Instancias en servicio",
+      "description": "Requiere métricas de grupo del ASG (se activan con enable_grafana).",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/AutoScaling",
+          "metricName": "GroupInServiceInstances",
+          "dimensions": {
+            "AutoScalingGroupName": "$api_asg"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "API"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/AutoScaling",
+          "metricName": "GroupInServiceInstances",
+          "dimensions": {
+            "AutoScalingGroupName": "$worker_asg"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "workers"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "CPU promedio por ASG (objetivo 60 %)",
+      "description": "La línea roja es api_cpu_target: arriba de ella el ASG de la API agrega instancias.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/EC2",
+          "metricName": "CPUUtilization",
+          "dimensions": {
+            "AutoScalingGroupName": "$api_asg"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "API"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/EC2",
+          "metricName": "CPUUtilization",
+          "dimensions": {
+            "AutoScalingGroupName": "$worker_asg"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "workers"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "noValue": "Sin datos",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Cola (SQS + workers)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Mensajes en la cola",
+      "description": "Las anotaciones rojas son cambios de estado de las alarmas jobs-backlog / jobs-empty.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/SQS",
+          "metricName": "ApproximateNumberOfMessagesVisible",
+          "dimensions": {
+            "QueueName": "$queue"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "visibles"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/SQS",
+          "metricName": "ApproximateNumberOfMessagesNotVisible",
+          "dimensions": {
+            "QueueName": "$queue"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "en proceso"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Antigüedad del mensaje más viejo",
+      "description": "",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 27,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/SQS",
+          "metricName": "ApproximateAgeOfOldestMessage",
+          "dimensions": {
+            "QueueName": "$queue"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "segundos"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "DLQ (mensajes que fallaron 5 veces)",
+      "description": "",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 27,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "AWS/SQS",
+          "metricName": "ApproximateNumberOfMessagesVisible",
+          "dimensions": {
+            "QueueName": "$dlq"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "en la DLQ"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "noValue": "Sin datos",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Datos (Redis / DynamoDB — vacío si redis_mode = \"off\" / sin DynamoDB)",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "ElastiCache: CPU",
+          "description": "",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 36,
+            "w": 8,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ElastiCache",
+              "metricName": "CPUUtilization",
+              "dimensions": {
+                "CacheClusterId": "$redis_cluster"
+              },
+              "statistic": "Average",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "CPU"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "spanNulls": true
+              },
+              "noValue": "Sin datos"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "ElastiCache: conexiones",
+          "description": "",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 36,
+            "w": 8,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ElastiCache",
+              "metricName": "CurrConnections",
+              "dimensions": {
+                "CacheClusterId": "$redis_cluster"
+              },
+              "statistic": "Maximum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "conexiones"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "spanNulls": true
+              },
+              "noValue": "Sin datos"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "ElastiCache: hits / misses",
+          "description": "",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "x": 16,
+            "y": 36,
+            "w": 8,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ElastiCache",
+              "metricName": "CacheHits",
+              "dimensions": {
+                "CacheClusterId": "$redis_cluster"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "hits"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ElastiCache",
+              "metricName": "CacheMisses",
+              "dimensions": {
+                "CacheClusterId": "$redis_cluster"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "misses"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "spanNulls": true
+              },
+              "noValue": "Sin datos"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "DynamoDB: capacidad consumida",
+          "description": "",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 44,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/DynamoDB",
+              "metricName": "ConsumedReadCapacityUnits",
+              "dimensions": {
+                "TableName": "$ddb_daily_stats"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "lectura daily-stats"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/DynamoDB",
+              "metricName": "ConsumedWriteCapacityUnits",
+              "dimensions": {
+                "TableName": "$ddb_daily_stats"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "escritura daily-stats"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/DynamoDB",
+              "metricName": "ConsumedReadCapacityUnits",
+              "dimensions": {
+                "TableName": "$ddb_transactions"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "lectura transactions"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/DynamoDB",
+              "metricName": "ConsumedWriteCapacityUnits",
+              "dimensions": {
+                "TableName": "$ddb_transactions"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "escritura transactions"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "spanNulls": true
+              },
+              "noValue": "Sin datos"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "DynamoDB: peticiones limitadas (throttled)",
+          "description": "",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 44,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/DynamoDB",
+              "metricName": "ThrottledRequests",
+              "dimensions": {
+                "TableName": "$ddb_daily_stats"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "daily-stats"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/DynamoDB",
+              "metricName": "ThrottledRequests",
+              "dimensions": {
+                "TableName": "$ddb_transactions"
+              },
+              "statistic": "Sum",
+              "period": "60",
+              "matchExact": true,
+              "metricQueryType": 0,
+              "metricEditorMode": 0,
+              "queryMode": "Metrics",
+              "id": "",
+              "expression": "",
+              "label": "transactions"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "spanNulls": true
+              },
+              "noValue": "Sin datos"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        }
+      ],
+      "description": "ElastiCache solo publica métricas en redis_mode = \"elasticache\"; en modo ec2 usa los paneles de la app (caché del mapa)."
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "App (métricas propias, namespace RewardsHub — requiere enable_app_metrics)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Conciliación: diferencias en saldos",
+      "description": "Lo publica el job reconcile-balances (una vez al día).",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "ReconciliationMismatches",
+          "dimensions": {
+            "Role": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "diferencias"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "ReconciliationOrphanRewards",
+          "dimensions": {
+            "Role": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "canjes sin recompensa"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "noValue": "Sin datos",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Retraso de la réplica (DynamoDB)",
+      "description": "Vacío hasta P5 (job replicate-dynamo).",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "ReplicationLagSeconds",
+          "dimensions": {
+            "Role": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "segundos"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Idempotency-Key",
+      "description": "",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "IdempotentReplays",
+          "dimensions": {
+            "Role": "api"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "replays"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "IdempotencyConflicts",
+          "dimensions": {
+            "Role": "api"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "409 en curso"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "IdempotencyMissingKey",
+          "dimensions": {
+            "Role": "api"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "sin header"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Caché del mapa: % de aciertos",
+      "description": "HIT / (HIT + MISS). BYPASS (Redis caído) no cuenta.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "BizmapCacheHits",
+          "dimensions": {
+            "Role": "api"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "hits",
+          "expression": "",
+          "label": "hits"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "BizmapCacheMisses",
+          "dimensions": {
+            "Role": "api"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "misses",
+          "expression": "",
+          "label": "misses"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "id": "ratio",
+          "expression": "100 * hits / (hits + misses)",
+          "statistic": "Sum",
+          "label": "% hits",
+          "period": "60"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Rate limit: respuestas 429 de la app",
+      "description": "Límites de login, contraseña, PIN y reportes (RATE_LIMITS=on). Los 429 del WAF van arriba.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "RateLimited",
+          "dimensions": {
+            "Role": "api"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "429"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "noValue": "Sin datos"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Caché del mapa: Redis no disponible (BYPASS)",
+      "description": "",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 45,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "region": "$region",
+          "namespace": "RewardsHub",
+          "metricName": "BizmapCacheBypass",
+          "dimensions": {
+            "Role": "api"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "queryMode": "Metrics",
+          "id": "",
+          "expression": "",
+          "label": "bypass"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "noValue": "Sin datos",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "constant",
+        "name": "region",
+        "label": "Región",
+        "query": "__REGION__",
+        "hide": 2,
+        "current": {
+          "text": "__REGION__",
+          "value": "__REGION__"
+        },
+        "options": [
+          {
+            "text": "__REGION__",
+            "value": "__REGION__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "alb",
+        "label": "ALB (arn_suffix)",
+        "query": "__ALB__",
+        "hide": 2,
+        "current": {
+          "text": "__ALB__",
+          "value": "__ALB__"
+        },
+        "options": [
+          {
+            "text": "__ALB__",
+            "value": "__ALB__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "target_group",
+        "label": "Target group (arn_suffix)",
+        "query": "__TARGET_GROUP__",
+        "hide": 2,
+        "current": {
+          "text": "__TARGET_GROUP__",
+          "value": "__TARGET_GROUP__"
+        },
+        "options": [
+          {
+            "text": "__TARGET_GROUP__",
+            "value": "__TARGET_GROUP__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "api_asg",
+        "label": "ASG de la API",
+        "query": "__API_ASG__",
+        "hide": 2,
+        "current": {
+          "text": "__API_ASG__",
+          "value": "__API_ASG__"
+        },
+        "options": [
+          {
+            "text": "__API_ASG__",
+            "value": "__API_ASG__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "worker_asg",
+        "label": "ASG de workers",
+        "query": "__WORKER_ASG__",
+        "hide": 2,
+        "current": {
+          "text": "__WORKER_ASG__",
+          "value": "__WORKER_ASG__"
+        },
+        "options": [
+          {
+            "text": "__WORKER_ASG__",
+            "value": "__WORKER_ASG__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "queue",
+        "label": "Cola SQS",
+        "query": "__QUEUE__",
+        "hide": 2,
+        "current": {
+          "text": "__QUEUE__",
+          "value": "__QUEUE__"
+        },
+        "options": [
+          {
+            "text": "__QUEUE__",
+            "value": "__QUEUE__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "dlq",
+        "label": "DLQ",
+        "query": "__DLQ__",
+        "hide": 2,
+        "current": {
+          "text": "__DLQ__",
+          "value": "__DLQ__"
+        },
+        "options": [
+          {
+            "text": "__DLQ__",
+            "value": "__DLQ__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "waf_acl",
+        "label": "Web ACL del WAF",
+        "query": "__WAF_ACL__",
+        "hide": 2,
+        "current": {
+          "text": "__WAF_ACL__",
+          "value": "__WAF_ACL__"
+        },
+        "options": [
+          {
+            "text": "__WAF_ACL__",
+            "value": "__WAF_ACL__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "waf_rule",
+        "label": "Métrica de la regla del WAF",
+        "query": "__WAF_RULE__",
+        "hide": 2,
+        "current": {
+          "text": "__WAF_RULE__",
+          "value": "__WAF_RULE__"
+        },
+        "options": [
+          {
+            "text": "__WAF_RULE__",
+            "value": "__WAF_RULE__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "redis_cluster",
+        "label": "Clúster de ElastiCache",
+        "query": "__REDIS_CLUSTER__",
+        "hide": 2,
+        "current": {
+          "text": "__REDIS_CLUSTER__",
+          "value": "__REDIS_CLUSTER__"
+        },
+        "options": [
+          {
+            "text": "__REDIS_CLUSTER__",
+            "value": "__REDIS_CLUSTER__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "ddb_daily_stats",
+        "label": "Tabla DynamoDB daily-stats",
+        "query": "__DDB_DAILY_STATS__",
+        "hide": 2,
+        "current": {
+          "text": "__DDB_DAILY_STATS__",
+          "value": "__DDB_DAILY_STATS__"
+        },
+        "options": [
+          {
+            "text": "__DDB_DAILY_STATS__",
+            "value": "__DDB_DAILY_STATS__",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "type": "constant",
+        "name": "ddb_transactions",
+        "label": "Tabla DynamoDB transactions",
+        "query": "__DDB_TRANSACTIONS__",
+        "hide": 2,
+        "current": {
+          "text": "__DDB_TRANSACTIONS__",
+          "value": "__DDB_TRANSACTIONS__"
+        },
+        "options": [
+          {
+            "text": "__DDB_TRANSACTIONS__",
+            "value": "__DDB_TRANSACTIONS__",
+            "selected": true
+          }
+        ]
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "name": "Alarmas de la cola (jobs-backlog / jobs-empty)",
+        "region": "$region",
+        "prefixMatching": true,
+        "alarmNamePrefix": "__PROJECT__-jobs-",
+        "namespace": "",
+        "metricName": "",
+        "dimensions": {},
+        "statistic": "",
+        "matchExact": false
+      }
+    ]
+  }
+}

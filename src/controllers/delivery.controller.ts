@@ -7,6 +7,7 @@ import * as userPointsService from '../services/userPoints.service';
 import { calculatePoints } from '../services/userPoints.service';
 import { BusinessModel } from '../models/business.model';
 import { Types } from 'mongoose';
+import { withTransaction } from '../db/withTransaction';
 
 const generateUniqueCode = (): string => {
     return crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -143,16 +144,6 @@ export const claimCode = async (req: Request, res: Response, next: NextFunction)
              return res.status(400).json({ message: 'No active reward systems found for this code' });
         }
 
-        await userPointsService.addPointsAndStamps(
-            userId,
-            redemption.businessId.toString(),
-            pointsAdded > 0 ? pointsSystem || null : null,
-            redemption.amount,
-            stampSystemsToAdd
-        );
-
-        const business = await BusinessModel.findById(redemption.businessId);
-
         const transactionItemsForService = transactionItems.map(item => ({
             rewardSystemId: item.rewardSystemId.toString(),
             rewardSystemName: item.rewardSystemName,
@@ -160,24 +151,54 @@ export const claimCode = async (req: Request, res: Response, next: NextFunction)
             stampsChange: item.stampsChange,
         }));
 
-        await transactionService.createTransaction(
-            userId,
-            redemption.businessId.toString(),
-            redemption.branchId?.toString(),
-            business ? business.username : 'Unknown Business',
-            'add',
-            transactionItemsForService,
-            redemption.amount,
-            undefined,
-            undefined,
-            `Pedido a domicilio (Código: ${redemption.code})`,
-            timezone ?? business?.timezone ?? 'UTC'
-        );
+        // Marcar el código como canjeado es lo PRIMERO de la transacción y es
+        // condicional: de dos canjes simultáneos solo uno lo logra. Antes se
+        // marcaba al final y los dos sumaban puntos.
+        const claimed = await withTransaction(async (session) => {
+            const now = new Date();
+            const taken = await RedemptionCodeModel.findOneAndUpdate(
+                { _id: redemption._id, isRedeemed: false, expiresAt: { $gte: now } },
+                { $set: { isRedeemed: true, redeemedBy: userId, redeemedAt: now } },
+                { session, new: true }
+            );
+            if (!taken) return false;
 
-        redemption.isRedeemed = true;
-        redemption.redeemedBy = userId;
-        redemption.redeemedAt = new Date();
-        await redemption.save();
+            await userPointsService.addPointsAndStamps(
+                userId,
+                redemption.businessId.toString(),
+                pointsAdded > 0 ? pointsSystem || null : null,
+                redemption.amount,
+                stampSystemsToAdd,
+                session
+            );
+
+            const business = await BusinessModel.findById(redemption.businessId, null, { session });
+
+            await transactionService.createTransaction(
+                userId,
+                redemption.businessId.toString(),
+                redemption.branchId?.toString(),
+                business ? business.username : 'Unknown Business',
+                'add',
+                transactionItemsForService,
+                redemption.amount,
+                undefined,
+                undefined,
+                `Pedido a domicilio (Código: ${redemption.code})`,
+                timezone ?? business?.timezone ?? 'UTC',
+                session
+            );
+            return true;
+        });
+
+        if (!claimed) {
+            // Otra petición lo canjeó (o venció) entre la lectura y la escritura:
+            // se relee para responder lo mismo que antes.
+            const current = await RedemptionCodeModel.findById(redemption._id);
+            if (!current) return res.status(404).json({ message: 'Invalid code' });
+            if (!current.isRedeemed && new Date() > current.expiresAt) return res.status(400).json({ message: 'Code expired' });
+            return res.status(409).json({ message: 'Code already redeemed' });
+        }
 
         res.status(200).json({ 
             message: 'Rewards claimed successfully',

@@ -13,6 +13,8 @@ export interface ISubscription extends Document {
     currentPeriodStart?: Date;
     currentPeriodEnd?: Date;
     cancelAtPeriodEnd: boolean;
+    /** event.created del último evento de Stripe aplicado; ignora eventos más viejos que lleguen tarde */
+    lastStripeEventAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -46,7 +48,8 @@ const subscriptionSchema = new Schema<ISubscription>(
         },
         currentPeriodStart: { type: Date },
         currentPeriodEnd: { type: Date },
-        cancelAtPeriodEnd: { type: Boolean, default: false }
+        cancelAtPeriodEnd: { type: Boolean, default: false },
+        lastStripeEventAt: { type: Date }
     },
     { timestamps: true }
 );
@@ -63,8 +66,11 @@ subscriptionSchema.set('toJSON', {
     },
 });
 
-subscriptionSchema.index({ businessId: 1 });
-subscriptionSchema.index({ stripeCustomerId: 1 });
+// businessId y stripeCustomerId ya tienen índice por `unique: true`. Declararlos
+// otra vez sin unique hacía fallar la creación de índices de Mongoose (mismo
+// nombre, otras opciones), y ese error cortaba la creación de los siguientes.
+// stripeSubscriptionId (lo busca cada evento del webhook) ya tiene índice:
+// `sparse: true` en la definición del campo lo crea.
 
 const rawCollection = process.env.SUBSCRIPTIONS_COLLECTION;
 const collectionName = rawCollection ? rawCollection.replace(/^['"]|['"]$/g, '') : undefined;

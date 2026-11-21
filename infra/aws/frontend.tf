@@ -8,7 +8,8 @@
 #   http://<alb>.elb.amazonaws.com                     → API
 
 locals {
-  frontend_dir = abspath("${path.module}/${var.frontend_dir}")
+  # Ruta absoluta (p. ej. /home/luis/rew_hub/rew_hub_front/RewardsHubFront) o relativa a infra/aws
+  frontend_dir = startswith(var.frontend_dir, "/") ? var.frontend_dir : abspath("${path.module}/${var.frontend_dir}")
   # Cambia cuando cambia el código del frontend → se recompila y se resube.
   frontend_files = var.enable_frontend ? sort(concat(
     tolist(fileset(local.frontend_dir, "src/**")),

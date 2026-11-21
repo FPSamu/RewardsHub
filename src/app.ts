@@ -20,7 +20,9 @@ import notificationRoutes from './routes/notification.routes';
 import passRoutes from './routes/pass.routes';
 import membershipRoutes from './routes/membership.routes';
 import appVersionRoutes from './routes/appVersion.routes';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+import { notFoundHandler, errorHandler } from './middleware/error.middleware';
+// src/anna es CommonJS en JavaScript
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const annaRouter = require('./anna/router');
 
 const app = express();
@@ -69,8 +71,9 @@ const corsOptions = {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-token'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    // Idempotency-Key: el cliente lo manda en escrituras que mueven saldo (ver idempotency.middleware.ts)
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-token', 'Idempotency-Key'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range', 'Idempotent-Replayed', 'Retry-After', 'X-Cache', 'X-Data-Freshness'],
     maxAge: 600, // Cache preflight requests for 10 minutes
 };
 
@@ -113,5 +116,9 @@ app.use('/passes', passRoutes);
 app.use('/memberships', membershipRoutes);
 app.use('/app-version', appVersionRoutes);
 app.use('/anna/api', annaRouter);
+
+// Siempre al final: 404 y errores (next(err), CORS, JSON inválido) en JSON.
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 export default app;

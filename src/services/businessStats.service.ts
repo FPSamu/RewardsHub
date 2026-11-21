@@ -3,6 +3,7 @@ import { TransactionModel } from '../models/transaction.model';
 import { RewardModel } from '../models/reward.model';
 import { UserPointsModel } from '../models/userPoints.model';
 import { UserModel } from '../models/user.model';
+import { useDailyStats, dailyTimeSeries, dailyKpiSums, dailyBranchCounts, withStoredStats, StatsMeta } from './dailyStats.service';
 
 export interface BusinessStats {
     totalClients: number;
@@ -192,7 +193,11 @@ export interface DailyStat {
  * "Clientes nuevos" se calcula por la fecha de la PRIMERA transacción de cada
  * usuario con este negocio (histórica), no solo dentro del rango solicitado.
  */
-export const getTimeSeriesStats = async (businessId: string, days: number = 30): Promise<DailyStat[]> => {
+export const getTimeSeriesStats = async (businessId: string, days: number = 30, meta?: StatsMeta): Promise<DailyStat[]> => {
+    // STATS_SOURCE=daily|dynamo → mismos números desde daily_stats o su réplica (+ hoy en vivo)
+    if (useDailyStats()) return withStoredStats(meta, (loaders) => dailyTimeSeries(businessId, days, loaders));
+    if (meta) meta.source = 'live';
+
     const oid = new Types.ObjectId(businessId);
 
     const since = new Date();
@@ -280,7 +285,7 @@ export interface KpiSummary {
  * un % de cambio real. Las que son una foto del momento (recompensas activas,
  * clientes en riesgo) no tienen "anterior" — no aplica compararlas.
  */
-export const getKpiSummary = async (businessId: string, days: number = 30): Promise<KpiSummary> => {
+export const getKpiSummary = async (businessId: string, days: number = 30, meta?: StatsMeta): Promise<KpiSummary> => {
     const oid = new Types.ObjectId(businessId);
 
     const periodStart = new Date();
@@ -306,20 +311,32 @@ export const getKpiSummary = async (businessId: string, days: number = 30): Prom
         return rows[0]?.total ?? 0;
     };
 
+    // Ingresos, puntos y canjes son sumas por día: con STATS_SOURCE=daily salen de
+    // daily_stats. Clientes, recompensas activas y en riesgo se quedan en vivo
+    // (son conteos distintos o fotos del momento, no se pueden sumar por día).
+    const liveSums = async () => {
+        const [
+            revenueCurrent, revenuePrevious,
+            pointsCurrent, pointsPrevious,
+            redemptionsCurrent, redemptionsPrevious,
+        ] = await Promise.all([
+            sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: periodStart } }, 'purchaseAmount'),
+            sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: previousStart, $lt: periodStart } }, 'purchaseAmount'),
+            sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: periodStart } }, 'totalPointsChange'),
+            sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: previousStart, $lt: periodStart } }, 'totalPointsChange'),
+            sumInRange({ businessId: oid, type: 'redeem', createdAt: { $gte: periodStart } }, '__count__'),
+            sumInRange({ businessId: oid, type: 'redeem', createdAt: { $gte: previousStart, $lt: periodStart } }, '__count__'),
+        ]);
+        return { revenueCurrent, revenuePrevious, pointsCurrent, pointsPrevious, redemptionsCurrent, redemptionsPrevious };
+    };
+
     const [
-        revenueCurrent, revenuePrevious,
-        pointsCurrent, pointsPrevious,
-        redemptionsCurrent, redemptionsPrevious,
+        sums,
         clientsBeforeNow, clientsBeforePeriod,
         totalActiveRewards,
         atRiskCount,
     ] = await Promise.all([
-        sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: periodStart } }, 'purchaseAmount'),
-        sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: previousStart, $lt: periodStart } }, 'purchaseAmount'),
-        sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: periodStart } }, 'totalPointsChange'),
-        sumInRange({ businessId: oid, type: 'add', createdAt: { $gte: previousStart, $lt: periodStart } }, 'totalPointsChange'),
-        sumInRange({ businessId: oid, type: 'redeem', createdAt: { $gte: periodStart } }, '__count__'),
-        sumInRange({ businessId: oid, type: 'redeem', createdAt: { $gte: previousStart, $lt: periodStart } }, '__count__'),
+        useDailyStats() ? withStoredStats(meta, (loaders) => dailyKpiSums(businessId, days, loaders)) : (meta && (meta.source = 'live'), liveSums()),
 
         // Tamaño de la base de clientes: total histórico y tamaño de la base
         // hace `days` días (para medir el crecimiento del periodo).
@@ -345,9 +362,9 @@ export const getKpiSummary = async (businessId: string, days: number = 30): Prom
 
     return {
         totalClients: { current: clientsBeforeNow, previous: clientsBeforePeriod },
-        revenue: { current: revenueCurrent, previous: revenuePrevious },
-        pointsDistributed: { current: pointsCurrent, previous: pointsPrevious },
-        redemptions: { current: redemptionsCurrent, previous: redemptionsPrevious },
+        revenue: { current: sums.revenueCurrent, previous: sums.revenuePrevious },
+        pointsDistributed: { current: sums.pointsCurrent, previous: sums.pointsPrevious },
+        redemptions: { current: sums.redemptionsCurrent, previous: sums.redemptionsPrevious },
         totalActiveRewards,
         atRiskClients: atRiskCount,
     };
@@ -461,7 +478,13 @@ export interface BranchComparisonStat {
  * Compara transacciones por sucursal en los últimos `days` días contra los
  * `days` anteriores a ese periodo (ej. este mes vs el mes pasado).
  */
-export const getBranchComparison = async (businessId: string, days: number = 30): Promise<BranchComparisonStat[]> => {
+export const getBranchComparison = async (businessId: string, days: number = 30, meta?: StatsMeta): Promise<BranchComparisonStat[]> => {
+    if (useDailyStats()) {
+        const { currentMap, previousMap } = await withStoredStats(meta, (loaders) => dailyBranchCounts(businessId, days, loaders));
+        return compareBranches(currentMap, previousMap);
+    }
+    if (meta) meta.source = 'live';
+
     const oid = new Types.ObjectId(businessId);
 
     const periodStart = new Date();
@@ -483,9 +506,17 @@ export const getBranchComparison = async (businessId: string, days: number = 30)
     ]);
 
     const toKey = (id: any) => (id ? id.toString() : null);
-    const currentMap = new Map(current.map((c) => [toKey(c._id), c.count]));
-    const previousMap = new Map(previous.map((c) => [toKey(c._id), c.count]));
+    const currentMap = new Map<string | null, number>(current.map((c) => [toKey(c._id), c.count]));
+    const previousMap = new Map<string | null, number>(previous.map((c) => [toKey(c._id), c.count]));
 
+    return compareBranches(currentMap, previousMap);
+};
+
+/** Mismo cálculo de % para live y daily. */
+const compareBranches = (
+    currentMap: Map<string | null, number>,
+    previousMap: Map<string | null, number>
+): BranchComparisonStat[] => {
     const branchIds = new Set<string | null>([...currentMap.keys(), ...previousMap.keys()]);
 
     return Array.from(branchIds).map((branchId) => {

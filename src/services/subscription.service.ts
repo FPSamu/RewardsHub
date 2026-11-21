@@ -46,13 +46,23 @@ export const getSubscriptionByStripeSubscriptionId = async (stripeSubscriptionId
 
 /**
  * Update subscription status
+ *
+ * Orden de eventos (opcional). Stripe no garantiza el orden de entrega:
+ * - eventCreatedAt + ignoreOlder: solo aplica si el evento no es más viejo
+ *   que el último aplicado (lastStripeEventAt). Si es más viejo devuelve null
+ *   y no toca nada.
+ * - eventCreatedAt sin ignoreOlder: aplica siempre y registra la fecha (p. ej.
+ *   subscription.deleted, para que un "updated" viejo no la reviva).
+ * Sin eventCreatedAt se comporta como siempre.
  */
 export const updateSubscriptionStatus = async (
     stripeSubscriptionId: string,
     status: MembershipStatus,
     currentPeriodStart?: Date,
     currentPeriodEnd?: Date,
-    cancelAtPeriodEnd?: boolean
+    cancelAtPeriodEnd?: boolean,
+    eventCreatedAt?: Date,
+    { ignoreOlder = true }: { ignoreOlder?: boolean } = {}
 ) => {
     const update: any = {
         membershipStatus: status,
@@ -62,8 +72,21 @@ export const updateSubscriptionStatus = async (
     if (currentPeriodEnd) update.currentPeriodEnd = currentPeriodEnd;
     if (cancelAtPeriodEnd !== undefined) update.cancelAtPeriodEnd = cancelAtPeriodEnd;
 
+    const filter: any = { stripeSubscriptionId };
+    if (eventCreatedAt) {
+        // $max: lastStripeEventAt nunca retrocede, aunque se aplique un evento viejo
+        update.$max = { lastStripeEventAt: eventCreatedAt };
+        if (ignoreOlder) {
+            filter.$or = [
+                { lastStripeEventAt: { $exists: false } },
+                { lastStripeEventAt: null },
+                { lastStripeEventAt: { $lte: eventCreatedAt } },
+            ];
+        }
+    }
+
     return await SubscriptionModel.findOneAndUpdate(
-        { stripeSubscriptionId },
+        filter,
         update,
         { new: true }
     );

@@ -51,7 +51,9 @@ data "archive_file" "app" {
   source_dir  = "${path.module}/../.."
   output_path = "${path.module}/.build/app.zip"
   excludes = [
-    "node_modules", "dist", ".git", ".env", "infra", "logs", "coverage",
+    # Ningún .env viaja dentro del zip del código: el del lab va aparte (env_file).
+    # ".env.*" (glob) cubre .env.lab, .env.local…; la app no necesita ni el .env.example.
+    "node_modules", "dist", ".git", ".env", ".env.*", "infra", "logs", "coverage",
     "tests", ".vscode", ".cursor", ".DS_Store", "render.yaml",
   ]
 }

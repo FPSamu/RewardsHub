@@ -4,7 +4,7 @@
  * This module handles CRUD operations for work shifts.
  */
 
-import { Types } from 'mongoose';
+import { ClientSession } from 'mongoose';
 import { WorkShiftModel, IWorkShift } from '../models/workShift.model';
 import { validateShiftTimes } from '../helpers/shiftCalculator';
 
@@ -136,8 +136,8 @@ export async function getWorkShiftsByBranch(
  * @param branchId - The branch ID (required)
  * @returns Array of active work shifts (Mongoose documents)
  */
-export async function getActiveWorkShifts(businessId: string, branchId: string): Promise<IWorkShift[]> {
-    return await WorkShiftModel.find({ businessId, branchId, isActive: true }).sort({ startTime: 1 });
+export async function getActiveWorkShifts(businessId: string, branchId: string, session?: ClientSession): Promise<IWorkShift[]> {
+    return await WorkShiftModel.find({ businessId, branchId, isActive: true }, null, { session }).sort({ startTime: 1 });
 }
 
 /**

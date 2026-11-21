@@ -106,6 +106,8 @@ transactionSchema.index({ userId: 1, businessId: 1 });
 transactionSchema.index({ userId: 1, createdAt: -1 });
 transactionSchema.index({ businessId: 1, createdAt: -1 });
 transactionSchema.index({ businessId: 1, workShiftId: 1, createdAt: -1 }); // For shift reports
+// Réplica a DynamoDB (job replicate-dynamo): lee en orden (updatedAt, _id) desde el checkpoint
+transactionSchema.index({ updatedAt: 1, _id: 1 });
 
 
 /**

@@ -4,7 +4,7 @@
  * This module is responsible for creating and fetching transaction history.
  */
 import { TransactionModel, ITransaction, TransactionType, ITransactionItem } from '../models/transaction.model';
-import { Types } from 'mongoose';
+import { ClientSession, Types } from 'mongoose';
 import * as workShiftService from './workShift.service';
 import { findShiftForTransaction } from '../helpers/shiftCalculator';
 
@@ -87,7 +87,8 @@ export const createTransaction = async (
     rewardId?: string,
     rewardName?: string,
     notes?: string,
-    timezone: string = 'UTC'
+    timezone: string = 'UTC',
+    session?: ClientSession
 ): Promise<PublicTransaction> => {
     // Calculate totals
     const totalPointsChange = items.reduce((sum, item) => sum + item.pointsChange, 0);
@@ -108,7 +109,7 @@ export const createTransaction = async (
     try {
         // Get active work shifts: prefer branch-specific shifts when a branchId is present
         const activeShifts = branchId
-            ? await workShiftService.getActiveWorkShifts(businessId, branchId)
+            ? await workShiftService.getActiveWorkShifts(businessId, branchId, session)
             : [];
 
         if (activeShifts.length > 0) {
@@ -130,7 +131,8 @@ export const createTransaction = async (
         console.error('[createTransaction] Error calculating work shift:', err);
     }
 
-    const doc = await TransactionModel.create({
+    // create([...]) en forma de arreglo: es la que acepta { session }
+    const [doc] = await TransactionModel.create([{
         userId: new Types.ObjectId(userId),
         businessId: new Types.ObjectId(businessId),
         branchId: branchId ? new Types.ObjectId(branchId) : undefined,
@@ -146,7 +148,7 @@ export const createTransaction = async (
         workShiftId,
         workShiftName,
         timezone: timezone !== 'UTC' ? timezone : undefined,
-    });
+    }], { session });
 
     return toPublic(doc as ITransaction);
 };

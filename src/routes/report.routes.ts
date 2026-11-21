@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import * as reportCtrl from '../controllers/report.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
+import { reportLimiter } from '../middleware/rateLimit.middleware';
 
 const router = Router();
 
@@ -14,9 +15,9 @@ const router = Router();
 router.use(authenticateBusiness);
 
 // Generate PDF report
-router.post('/generate', reportCtrl.generateReport);
+router.post('/generate', reportLimiter, reportCtrl.generateReport);
 
 // Get report preview (JSON data without PDF)
-router.post('/preview', reportCtrl.getReportPreview);
+router.post('/preview', reportLimiter, reportCtrl.getReportPreview);
 
 export default router;

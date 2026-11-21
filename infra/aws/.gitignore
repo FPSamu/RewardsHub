@@ -4,3 +4,5 @@
 *.tfstate.*
 terraform.tfvars
 crash.log
+# Etapas locales del despliegue incremental (pueden traer valores de una sesión)
+*.auto.tfvars

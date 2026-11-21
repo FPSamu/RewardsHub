@@ -1,7 +1,8 @@
 /**
  * Worker de la cola SQS.  Arranque: `npm run worker` (dist/worker.js).
  *
- * Consume trabajos (avisos, engagement) publicados por EventBridge o por la API.
+ * Consume trabajos (avisos, engagement, daily-stats, reconcile-balances, replicate-dynamo)
+ * publicados por EventBridge, por la API o por `./lab.sh enqueue`.
  * Se puede escalar horizontalmente: el candado JobRun evita ejecuciones dobles.
  */
 import dotenv from 'dotenv';
@@ -10,7 +11,12 @@ dotenv.config();
 import os from 'os';
 import connectDb from './db/mongoose';
 import { runNotificationBatch, runEngagementBatch } from './services/notification.service';
-import { isQueueEnabled, receiveMessages, deleteMessage, extendVisibility } from './queue/sqs';
+import { isQueueEnabled, receiveMessages, deleteMessage, extendVisibility, enqueueJob } from './queue/sqs';
+import { runDailyStatsJob } from './jobs/dailyStats.job';
+import { runReconcileJob } from './jobs/reconcile.job';
+import { runReplicateDynamoJob } from './jobs/replicateDynamo.job';
+import { closeRedis } from './cache/redis';
+import { setGauge, startMetrics, stopMetrics } from './observability/metrics';
 import { acquireJob, completeJob, releaseJob, renewJob } from './queue/jobLock';
 import { processMessage, JobHandlers } from './queue/processor';
 import { jobRunKey, parseJobMessage } from './queue/jobs';
@@ -21,8 +27,13 @@ const LEASE_MS = VISIBILITY_SECONDS * 1000;
 const workerId = `${os.hostname()}:${process.pid}`;
 
 const handlers: JobHandlers = {
-    'notification-batch': runNotificationBatch,
-    'engagement-batch': runEngagementBatch,
+    'notification-batch': () => runNotificationBatch(),
+    'engagement-batch': () => runEngagementBatch(),
+    'daily-stats': (params, ctx) => runDailyStatsJob(params, ctx, { enqueue: enqueueJob }),
+    // La conciliación publica sus diferencias como métrica (P6.3; no-op sin METRICS_ENABLED)
+    'reconcile-balances': (params, ctx) => runReconcileJob(params, ctx, { metric: (name, value) => setGauge(name, value) }),
+    // Réplica a DynamoDB (P5.2); no-op sin DDB_*. Publica el retraso como métrica.
+    'replicate-dynamo': () => runReplicateDynamoJob({ metric: (name, value) => setGauge(name, value) }),
 };
 
 let stopping = false;
@@ -66,6 +77,8 @@ const loop = async () => {
         }
     }
     console.log('👋 [Worker] Detenido');
+    await stopMetrics();
+    await closeRedis();
     process.exit(0);
 };
 
@@ -83,6 +96,7 @@ const start = async () => {
         process.exit(1);
     }
     await connectDb();
+    startMetrics('worker');
     await loop();
 };
 

@@ -3,8 +3,8 @@
  *
  * This module is responsible for managing user points and stamps across different businesses.
  */
-import { UserPointsModel, IUserPoints, IBusinessPoints, IRewardSystemPoints } from '../models/userPoints.model';
-import { Types } from 'mongoose';
+import { UserPointsModel, IUserPoints } from '../models/userPoints.model';
+import { ClientSession, Types } from 'mongoose';
 import { PublicSystem } from './system.service';
 
 /**
@@ -68,6 +68,193 @@ export const calculatePoints = (purchaseAmount: number, pointsConversion: { amou
     return Math.floor((purchaseAmount / pointsConversion.amount) * pointsConversion.points);
 };
 
+// ── Escrituras atómicas ──────────────────────────────────────────────────────
+//
+// Antes: leer el documento → modificarlo en JS → save(). Dos cajeros (o dos
+// instancias detrás del ALB) sobre el mismo usuario perdían una de las dos
+// actualizaciones, y dos restas a la vez podían pasar ambas el chequeo de saldo.
+// Ahora cada cambio es un solo updateOne con $inc, y en las restas el filtro
+// exige saldo suficiente (los validadores min: 0 del schema no corren con $inc).
+
+/** Cambio de puntos/sellos de un sistema de recompensas. */
+type SystemDelta = { id: Types.ObjectId; points: number; stamps: number };
+
+const isDuplicateKey = (err: any) => err?.code === 11000;
+
+/** Junta los cambios por sistema: un sistema repetido queda en una sola entrada. */
+const mergeDeltas = (entries: SystemDelta[]): SystemDelta[] => {
+    const merged = new Map<string, SystemDelta>();
+    for (const e of entries) {
+        const cur = merged.get(e.id.toString()) ?? { id: e.id, points: 0, stamps: 0 };
+        cur.points += e.points;
+        cur.stamps += e.stamps;
+        merged.set(e.id.toString(), cur);
+    }
+    return Array.from(merged.values());
+};
+
+/**
+ * Crea, si faltan, el documento del usuario, su entrada del negocio y la de
+ * cada sistema. Idempotente y seguro en paralelo: cada $push lleva en el
+ * filtro la condición de que la entrada aún no exista.
+ */
+const ensureEntries = async (
+    userId: Types.ObjectId,
+    businessId: Types.ObjectId,
+    systemIds: Types.ObjectId[],
+    now: Date,
+    session?: ClientSession
+): Promise<void> => {
+    try {
+        await UserPointsModel.updateOne(
+            { userId },
+            { $setOnInsert: { userId, businessPoints: [] } },
+            { upsert: true, session }
+        );
+    } catch (err) {
+        // Otra petición creó el documento al mismo tiempo: ya existe, que es lo que queríamos.
+        if (!isDuplicateKey(err)) throw err;
+    }
+
+    await UserPointsModel.updateOne(
+        { userId, 'businessPoints.businessId': { $ne: businessId } },
+        { $push: { businessPoints: { businessId, points: 0, stamps: 0, lastVisit: now, rewardSystems: [] } } },
+        { session }
+    );
+
+    for (const rewardSystemId of systemIds) {
+        await UserPointsModel.updateOne(
+            { userId, businessPoints: { $elemMatch: { businessId, 'rewardSystems.rewardSystemId': { $ne: rewardSystemId } } } },
+            { $push: { 'businessPoints.$[bp].rewardSystems': { rewardSystemId, points: 0, stamps: 0, lastUpdated: now } } },
+            { arrayFilters: [{ 'bp.businessId': businessId }], session }
+        );
+    }
+};
+
+/**
+ * Un solo update con $inc: totales del negocio (bp) y cada sistema (rs0, rs1, …).
+ * Los valores negativos restan.
+ */
+const buildIncUpdate = (
+    businessId: Types.ObjectId,
+    businessPoints: number,
+    businessStamps: number,
+    deltas: SystemDelta[],
+    now: Date
+) => {
+    const $inc: Record<string, number> = {};
+    const $set: Record<string, Date> = { 'businessPoints.$[bp].lastVisit': now };
+    const arrayFilters: Record<string, unknown>[] = [{ 'bp.businessId': businessId }];
+
+    if (businessPoints) $inc['businessPoints.$[bp].points'] = businessPoints;
+    if (businessStamps) $inc['businessPoints.$[bp].stamps'] = businessStamps;
+
+    deltas.forEach((d, i) => {
+        const path = `businessPoints.$[bp].rewardSystems.$[rs${i}]`;
+        if (d.points) $inc[`${path}.points`] = d.points;
+        if (d.stamps) $inc[`${path}.stamps`] = d.stamps;
+        $set[`${path}.lastUpdated`] = now;
+        arrayFilters.push({ [`rs${i}.rewardSystemId`]: d.id });
+    });
+
+    const update: Record<string, unknown> = { $set };
+    if (Object.keys($inc).length > 0) update.$inc = $inc;
+    return { update, arrayFilters };
+};
+
+const readUserPoints = async (userId: Types.ObjectId, session?: ClientSession): Promise<PublicUserPoints> => {
+    const doc = await UserPointsModel.findOne({ userId }, null, { session }).exec();
+    if (!doc) throw new Error('User has no points/stamps to subtract');
+    return toPublic(doc as IUserPoints);
+};
+
+/**
+ * Las mismas validaciones, en el mismo orden y con los mismos mensajes que
+ * antes, contra un documento leído. Devuelve qué hay que restar.
+ */
+const checkSubtract = (
+    doc: IUserPoints | null,
+    businessId: string,
+    pointsSystem: PublicSystem | null,
+    pointsToSubtract?: number,
+    stampSystems?: Array<{ system: PublicSystem, count: number }>
+): { points: number; stamps: number; deltas: SystemDelta[] } => {
+    if (!doc) {
+        throw new Error('User has no points/stamps to subtract');
+    }
+
+    const businessPoints = doc.businessPoints.find((bp) => bp.businessId.toString() === businessId);
+    if (!businessPoints) {
+        throw new Error('User has no points/stamps at this business');
+    }
+
+    // Saldo restante por sistema mientras se validan los pedidos (un sistema repetido se descuenta dos veces)
+    const left = new Map(businessPoints.rewardSystems.map((rs) => [
+        rs.rewardSystemId.toString(),
+        { points: rs.points, stamps: rs.stamps },
+    ]));
+    const deltas: SystemDelta[] = [];
+    let points = 0;
+    let stamps = 0;
+
+    if (pointsSystem && pointsToSubtract !== undefined && pointsToSubtract > 0) {
+        if (pointsSystem.businessId !== businessId) {
+            throw new Error('Points system does not belong to the specified business');
+        }
+        if (!pointsSystem.isActive) {
+            throw new Error('Points system is not active');
+        }
+
+        const pointsSystemIdObj = new Types.ObjectId(pointsSystem.id);
+        const balance = left.get(pointsSystemIdObj.toString());
+        if (!balance) {
+            throw new Error('User has no points in this reward system');
+        }
+        if (balance.points < pointsToSubtract) {
+            throw new Error(`Insufficient points. User has ${balance.points} points, trying to subtract ${pointsToSubtract}`);
+        }
+
+        balance.points -= pointsToSubtract;
+        points += pointsToSubtract;
+        deltas.push({ id: pointsSystemIdObj, points: pointsToSubtract, stamps: 0 });
+    }
+
+    if (stampSystems && stampSystems.length > 0) {
+        for (const { system, count } of stampSystems) {
+            if (system.businessId !== businessId) {
+                throw new Error(`Stamp system ${system.name} does not belong to the specified business`);
+            }
+            if (!system.isActive) {
+                throw new Error(`Stamp system ${system.name} is not active`);
+            }
+            if (count <= 0) {
+                throw new Error(`Invalid stamp count for system ${system.name}`);
+            }
+
+            const stampSystemIdObj = new Types.ObjectId(system.id);
+            const balance = left.get(stampSystemIdObj.toString());
+            if (!balance) {
+                throw new Error(`User has no stamps in reward system ${system.name}`);
+            }
+            if (balance.stamps < count) {
+                throw new Error(`Insufficient stamps in ${system.name}. User has ${balance.stamps} stamps, trying to subtract ${count}`);
+            }
+
+            balance.stamps -= count;
+            stamps += count;
+            deltas.push({ id: stampSystemIdObj, points: 0, stamps: count });
+        }
+    }
+
+    // Antes, save() fallaba con el validador min: 0 si el total del negocio quedaba negativo
+    // (datos viejos donde el total no cuadra con los sistemas). Se conserva ese rechazo.
+    if (businessPoints.points < points || businessPoints.stamps < stamps) {
+        throw new Error('UserPoints validation failed: business total would become negative');
+    }
+
+    return { points, stamps, deltas: mergeDeltas(deltas) };
+};
+
 /**
  * Add points and/or stamps to a user for a specific business.
  * @param userId - The user ID
@@ -75,6 +262,7 @@ export const calculatePoints = (purchaseAmount: number, pointsConversion: { amou
  * @param pointsSystem - The points system (null if not adding points)
  * @param purchaseAmount - The purchase amount (for points calculation)
  * @param stampSystems - Array of stamp systems with their counts
+ * @param session - Sesión de la transacción en curso (opcional)
  * @returns Updated public user points object
  */
 export const addPointsAndStamps = async (
@@ -82,7 +270,8 @@ export const addPointsAndStamps = async (
     businessId: string,
     pointsSystem: PublicSystem | null,
     purchaseAmount?: number,
-    stampSystems?: Array<{ system: PublicSystem, count: number }>
+    stampSystems?: Array<{ system: PublicSystem, count: number }>,
+    session?: ClientSession
 ): Promise<PublicUserPoints> => {
     // Calculate points if points system is provided
     let pointsToAdd = 0;
@@ -131,113 +320,19 @@ export const addPointsAndStamps = async (
 
     const userIdObj = new Types.ObjectId(userId);
     const businessIdObj = new Types.ObjectId(businessId);
+    const now = new Date();
 
-    // Find or create user points document
-    let userPoints = await UserPointsModel.findOne({ userId: userIdObj }).exec();
+    const deltas = mergeDeltas([
+        ...(pointsSystemIdObj && pointsToAdd > 0 ? [{ id: pointsSystemIdObj, points: pointsToAdd, stamps: 0 }] : []),
+        ...validatedStampSystems.map(({ id, count }) => ({ id, points: 0, stamps: count })),
+    ]);
 
-    if (!userPoints) {
-        // Create new user points document
-        userPoints = await UserPointsModel.create({
-            userId: userIdObj,
-            businessPoints: [],
-        });
-    }
+    await ensureEntries(userIdObj, businessIdObj, deltas.map((d) => d.id), now, session);
 
-    // Find business index in user's businessPoints array
-    const businessIndex = userPoints.businessPoints.findIndex(
-        (bp) => bp.businessId.toString() === businessIdObj.toString()
-    );
+    const { update, arrayFilters } = buildIncUpdate(businessIdObj, pointsToAdd, totalStampsToAdd, deltas, now);
+    await UserPointsModel.updateOne({ userId: userIdObj }, update, { arrayFilters, session });
 
-    if (businessIndex === -1) {
-        // Create new business entry
-        const newRewardSystems: IRewardSystemPoints[] = [];
-        
-        // Add points system if applicable
-        if (pointsSystemIdObj && pointsToAdd > 0) {
-            newRewardSystems.push({
-                rewardSystemId: pointsSystemIdObj,
-                points: pointsToAdd,
-                stamps: 0,
-                lastUpdated: new Date(),
-            });
-        }
-        
-        // Add stamp systems
-        for (const { id, count } of validatedStampSystems) {
-            newRewardSystems.push({
-                rewardSystemId: id,
-                points: 0,
-                stamps: count,
-                lastUpdated: new Date(),
-            });
-        }
-        
-        userPoints.businessPoints.push({
-            businessId: businessIdObj,
-            points: pointsToAdd,
-            stamps: totalStampsToAdd,
-            lastVisit: new Date(),
-            rewardSystems: newRewardSystems,
-        });
-    } else {
-        // Update existing business entry
-        const businessPoints = userPoints.businessPoints[businessIndex];
-        businessPoints.points += pointsToAdd;
-        businessPoints.stamps += totalStampsToAdd;
-        businessPoints.lastVisit = new Date();
-
-        // Update or create points system entry
-        if (pointsSystemIdObj && pointsToAdd > 0) {
-            const pointsSystemIndex = businessPoints.rewardSystems.findIndex(
-                (rs) => rs.rewardSystemId.toString() === pointsSystemIdObj!.toString()
-            );
-
-            if (pointsSystemIndex === -1) {
-                // Create new points system entry
-                businessPoints.rewardSystems.push({
-                    rewardSystemId: pointsSystemIdObj,
-                    points: pointsToAdd,
-                    stamps: 0,
-                    lastUpdated: new Date(),
-                });
-            } else {
-                // Update existing points system entry
-                const pointsSystemPoints = businessPoints.rewardSystems[pointsSystemIndex];
-                pointsSystemPoints.points += pointsToAdd;
-                pointsSystemPoints.lastUpdated = new Date();
-            }
-        }
-
-        // Update or create stamp system entries
-        for (const { id, count } of validatedStampSystems) {
-            const stampSystemIndex = businessPoints.rewardSystems.findIndex(
-                (rs) => rs.rewardSystemId.toString() === id.toString()
-            );
-
-            if (stampSystemIndex === -1) {
-                // Create new stamp system entry
-                businessPoints.rewardSystems.push({
-                    rewardSystemId: id,
-                    points: 0,
-                    stamps: count,
-                    lastUpdated: new Date(),
-                });
-            } else {
-                // Update existing stamp system entry
-                const stampSystemPoints = businessPoints.rewardSystems[stampSystemIndex];
-                stampSystemPoints.stamps += count;
-                stampSystemPoints.lastUpdated = new Date();
-            }
-        }
-    }
-
-    // Mark the array as modified so Mongoose saves it
-    userPoints.markModified('businessPoints');
-
-    // Save the document
-    await userPoints.save();
-
-    return toPublic(userPoints as IUserPoints);
+    return readUserPoints(userIdObj, session);
 };
 
 /**
@@ -357,6 +452,7 @@ export const getAllUsersForBusiness = async (businessId: string): Promise<Array<
  * @param pointsSystem - The points system (null if not subtracting points)
  * @param pointsToSubtract - The number of points to subtract
  * @param stampSystems - Array of stamp systems with their counts to subtract
+ * @param session - Sesión de la transacción en curso (opcional)
  * @returns Updated public user points object
  */
 export const subtractPointsAndStamps = async (
@@ -364,113 +460,49 @@ export const subtractPointsAndStamps = async (
     businessId: string,
     pointsSystem: PublicSystem | null,
     pointsToSubtract?: number,
-    stampSystems?: Array<{ system: PublicSystem, count: number }>
+    stampSystems?: Array<{ system: PublicSystem, count: number }>,
+    session?: ClientSession
 ): Promise<PublicUserPoints> => {
     const userIdObj = new Types.ObjectId(userId);
     const businessIdObj = new Types.ObjectId(businessId);
 
-    // Find user points document
-    const userPoints = await UserPointsModel.findOne({ userId: userIdObj }).exec();
+    for (let attempt = 1; ; attempt++) {
+        const doc = await UserPointsModel.findOne({ userId: userIdObj }, null, { session }).exec();
+        const plan = checkSubtract(doc as IUserPoints | null, businessId, pointsSystem, pointsToSubtract, stampSystems);
 
-    if (!userPoints) {
-        throw new Error('User has no points/stamps to subtract');
-    }
-
-    // Find business index in user's businessPoints array
-    const businessIndex = userPoints.businessPoints.findIndex(
-        (bp) => bp.businessId.toString() === businessIdObj.toString()
-    );
-
-    if (businessIndex === -1) {
-        throw new Error('User has no points/stamps at this business');
-    }
-
-    const businessPoints = userPoints.businessPoints[businessIndex];
-
-    // Validate and subtract points if points system is provided
-    if (pointsSystem && pointsToSubtract !== undefined && pointsToSubtract > 0) {
-        if (pointsSystem.businessId !== businessId) {
-            throw new Error('Points system does not belong to the specified business');
+        // El filtro exige el saldo que se validó: si otra petición lo gastó
+        // mientras tanto, no hay match y no se resta nada.
+        const guards: Record<string, unknown>[] = [];
+        if (plan.points > 0 || plan.stamps > 0) {
+            guards.push({ businessPoints: { $elemMatch: {
+                businessId: businessIdObj,
+                ...(plan.points > 0 && { points: { $gte: plan.points } }),
+                ...(plan.stamps > 0 && { stamps: { $gte: plan.stamps } }),
+            } } });
         }
-        if (!pointsSystem.isActive) {
-            throw new Error('Points system is not active');
+        for (const d of plan.deltas) {
+            guards.push({ businessPoints: { $elemMatch: {
+                businessId: businessIdObj,
+                rewardSystems: { $elemMatch: {
+                    rewardSystemId: d.id,
+                    ...(d.points > 0 && { points: { $gte: d.points } }),
+                    ...(d.stamps > 0 && { stamps: { $gte: d.stamps } }),
+                } },
+            } } });
         }
 
-        const pointsSystemIdObj = new Types.ObjectId(pointsSystem.id);
-
-        // Find the points system in reward systems
-        const pointsSystemIndex = businessPoints.rewardSystems.findIndex(
-            (rs) => rs.rewardSystemId.toString() === pointsSystemIdObj.toString()
+        const now = new Date();
+        const negative = plan.deltas.map((d) => ({ id: d.id, points: -d.points, stamps: -d.stamps }));
+        const { update, arrayFilters } = buildIncUpdate(businessIdObj, -plan.points, -plan.stamps, negative, now);
+        const result = await UserPointsModel.updateOne(
+            { userId: userIdObj, 'businessPoints.businessId': businessIdObj, ...(guards.length > 0 && { $and: guards }) },
+            update,
+            { arrayFilters, session }
         );
+        if (result.matchedCount === 1) return readUserPoints(userIdObj, session);
 
-        if (pointsSystemIndex === -1) {
-            throw new Error('User has no points in this reward system');
-        }
-
-        const rewardSystemPoints = businessPoints.rewardSystems[pointsSystemIndex];
-
-        // Check if user has enough points
-        if (rewardSystemPoints.points < pointsToSubtract) {
-            throw new Error(`Insufficient points. User has ${rewardSystemPoints.points} points, trying to subtract ${pointsToSubtract}`);
-        }
-
-        // Subtract points from reward system
-        rewardSystemPoints.points -= pointsToSubtract;
-        rewardSystemPoints.lastUpdated = new Date();
-
-        // Subtract from business total
-        businessPoints.points -= pointsToSubtract;
+        // Sin match: el saldo cambió entre la lectura y la escritura. Al releer,
+        // checkSubtract lanza el mismo error que antes ("Insufficient points…").
+        if (attempt >= 3) throw new Error('Points were updated concurrently, please retry');
     }
-
-    // Validate and subtract stamps if stamp systems are provided
-    if (stampSystems && stampSystems.length > 0) {
-        for (const { system, count } of stampSystems) {
-            if (system.businessId !== businessId) {
-                throw new Error(`Stamp system ${system.name} does not belong to the specified business`);
-            }
-            if (!system.isActive) {
-                throw new Error(`Stamp system ${system.name} is not active`);
-            }
-            if (count <= 0) {
-                throw new Error(`Invalid stamp count for system ${system.name}`);
-            }
-
-            const stampSystemIdObj = new Types.ObjectId(system.id);
-
-            // Find the stamp system in reward systems
-            const stampSystemIndex = businessPoints.rewardSystems.findIndex(
-                (rs) => rs.rewardSystemId.toString() === stampSystemIdObj.toString()
-            );
-
-            if (stampSystemIndex === -1) {
-                throw new Error(`User has no stamps in reward system ${system.name}`);
-            }
-
-            const rewardSystemStamps = businessPoints.rewardSystems[stampSystemIndex];
-
-            // Check if user has enough stamps
-            if (rewardSystemStamps.stamps < count) {
-                throw new Error(`Insufficient stamps in ${system.name}. User has ${rewardSystemStamps.stamps} stamps, trying to subtract ${count}`);
-            }
-
-            // Subtract stamps from reward system
-            rewardSystemStamps.stamps -= count;
-            rewardSystemStamps.lastUpdated = new Date();
-
-            // Subtract from business total
-            businessPoints.stamps -= count;
-        }
-    }
-
-    // Update last visit
-    businessPoints.lastVisit = new Date();
-
-    // Mark the array as modified so Mongoose saves it
-    userPoints.markModified('businessPoints');
-
-    // Save the document
-    await userPoints.save();
-
-    return toPublic(userPoints as IUserPoints);
 };
-

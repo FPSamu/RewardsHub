@@ -9,6 +9,9 @@ import { TransactionModel, TransactionType } from '../models/transaction.model';
 import { WorkShiftModel } from '../models/workShift.model';
 import { BusinessModel } from '../models/business.model';
 import { Types } from 'mongoose';
+import { statsSource } from './dailyStats.service';
+import { isDynamoEnabled } from '../replica/dynamo';
+import { reportTransactionsFromDynamo } from '../replica/dynamoReaders';
 
 /**
  * Report filters interface
@@ -166,6 +169,31 @@ export interface ReportData {
     redemptionSummary: RedemptionSummary;
 }
 
+let lastDynamoWarn = 0;
+
+/**
+ * Transacciones del reporte. Con STATS_SOURCE=dynamo (y DDB_* configuradas)
+ * salen de la réplica de DynamoDB —lo que la réplica aún no tiene, de Mongo—;
+ * si DynamoDB falla, de Mongo como siempre.
+ */
+const loadReportTransactions = async (
+    query: any,
+    q: { businessId: string; startDate: Date; endDate: Date; shiftIds?: string[]; types?: string[] }
+): Promise<any[]> => {
+    if (statsSource() === 'dynamo' && isDynamoEnabled()) {
+        try {
+            return await reportTransactionsFromDynamo(q);
+        } catch (err: any) {
+            const now = Date.now();
+            if (now - lastDynamoWarn > 60_000) {
+                lastDynamoWarn = now;
+                console.warn(`⚠️  [report] DynamoDB falló, se lee de Mongo: ${err?.message ?? err}`);
+            }
+        }
+    }
+    return TransactionModel.find(query).sort({ createdAt: 1 }).populate('userId', 'username email').exec();
+};
+
 /**
  * Generate report data for a business
  * 
@@ -197,7 +225,7 @@ export async function generateReportData(filters: ReportFilters): Promise<Report
 
     // Fetch transactions, shifts and business data in parallel
     const [transactions, allShifts, business] = await Promise.all([
-        TransactionModel.find(query).sort({ createdAt: 1 }).populate('userId', 'username email').exec(),
+        loadReportTransactions(query, { businessId, startDate, endDate, shiftIds, types: filters.types }),
         WorkShiftModel.find({ businessId: new Types.ObjectId(businessId) }).exec(),
         BusinessModel.findById(businessId).exec(),
     ]);

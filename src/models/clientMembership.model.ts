@@ -45,4 +45,12 @@ const ClientMembershipSchema = new Schema<IClientMembership>(
 // One active membership per client per business
 ClientMembershipSchema.index({ userId: 1, businessId: 1, status: 1 });
 
+// Un mismo plan no puede estar activo dos veces para el mismo cliente (evita la
+// carrera de dos activaciones simultáneas). Si la base ya tiene duplicados, el
+// índice no se construye: correr antes scripts/find-duplicate-memberships.ts.
+ClientMembershipSchema.index(
+    { userId: 1, planId: 1 },
+    { unique: true, partialFilterExpression: { status: 'active' }, name: 'uniq_active_plan_per_user' }
+);
+
 export const ClientMembershipModel = mongoose.model<IClientMembership>('ClientMembership', ClientMembershipSchema);

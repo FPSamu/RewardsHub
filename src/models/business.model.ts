@@ -6,6 +6,7 @@
  */
 import { Schema, model, Document } from 'mongoose';
 import { IRotatedRefreshToken, rotatedRefreshTokenSchema } from './rotatedRefreshToken.schema';
+import { bumpBizmapVersion } from '../cache/bizmapVersion';
 
 export interface ILocation {
     _id?: any;
@@ -15,6 +16,8 @@ export interface ILocation {
     longitude: number;
     formattedAddress?: string;
     isMain?: boolean;
+    /** GeoJSON [lng, lat] para el índice 2dsphere. Interno: no sale en las respuestas. */
+    geo?: { type: 'Point'; coordinates: number[] };
 }
 
 export interface IBusiness extends Document {
@@ -40,6 +43,16 @@ export interface IBusiness extends Document {
     branchPassHash?: string;      // contraseña de sucursal para acceso de cajeros (sin Google)
 }
 
+// Sin defaults a propósito: un { type: 'Point' } sin coordenadas lo rechaza el
+// índice 2dsphere. El hook de abajo lo llena siempre a partir de lat/lng.
+const geoPointSchema = new Schema(
+    {
+        type: { type: String, enum: ['Point'], required: true },
+        coordinates: { type: [Number], required: true },
+    },
+    { _id: false }
+);
+
 const locationSchema = new Schema<ILocation>(
     {
         name: { type: String },
@@ -47,9 +60,32 @@ const locationSchema = new Schema<ILocation>(
         latitude: { type: Number, required: true },
         longitude: { type: Number, required: true },
         formattedAddress: { type: String },
-        isMain: { type: Boolean, default: false }
+        isMain: { type: Boolean, default: false },
+        geo: { type: geoPointSchema },
     }
 );
+
+// latitude/longitude siguen siendo la fuente de verdad (la API los devuelve);
+// geo es una copia en GeoJSON para el índice. Todas las escrituras de sucursales
+// pasan por doc.save() (addBranch, updateBranch, removeBranch), y cualquier save
+// del negocio también rellena las sucursales viejas que aún no tenían geo.
+locationSchema.pre('validate', function (next) {
+    if (typeof this.latitude === 'number' && typeof this.longitude === 'number') {
+        const [lng, lat] = this.geo?.coordinates ?? [];
+        if (this.geo?.type !== 'Point' || lng !== this.longitude || lat !== this.latitude) {
+            this.geo = { type: 'Point', coordinates: [this.longitude, this.latitude] };
+        }
+    }
+    next();
+});
+
+// Las respuestas no cambian: geo es interno.
+locationSchema.set('toJSON', {
+    transform: (_doc: any, ret: any) => {
+        delete ret.geo;
+        return ret;
+    },
+});
 
 const businessSchema = new Schema<IBusiness>(
     {
@@ -76,7 +112,10 @@ const businessSchema = new Schema<IBusiness>(
     { timestamps: false }
 );
 
+// El índice lat/lng lo sigue usando el modo legacy de las consultas del mapa
+// (GEO_QUERY_MODE sin definir). Se puede borrar cuando geo esté en todos lados.
 businessSchema.index({ 'locations.latitude': 1, 'locations.longitude': 1 });
+businessSchema.index({ 'locations.geo': '2dsphere' });
 
 businessSchema.virtual('id').get(function (this: IBusiness) {
     return this._id.toString();
@@ -111,6 +150,51 @@ businessSchema.pre('findOneAndUpdate', function (next) {
         });
     }
     next();
+});
+
+// ── Invalidación de la caché del mapa (P4.3) ─────────────────────────────────
+// Toda escritura que pueda cambiar lo que muestran /business/nearby, /in-bounds
+// o /all sube la versión de la caché (INCR en Redis; no-op sin REDIS_URL, nunca
+// falla la escritura). Los campos de sesión/seguridad no cuentan: si no, cada
+// login (rotación de refresh tokens) vaciaría la caché.
+const NOT_ON_MAP = new Set([
+    'refreshTokens', 'rotatedRefreshTokens', 'verificationToken', 'resetPasswordToken',
+    'resetPasswordExpires', 'adminPinHash', 'isAdminPinTemporary', 'passHash',
+]);
+const touchesMap = (paths: string[]) => paths.some((p) => !NOT_ON_MAP.has(p.split('.')[0]));
+
+/** Rutas que toca un update de Mongo ({ $set: {...}, $push: {...}, campo: valor }). */
+const updatedPaths = (update: any): string[] => {
+    if (!update || typeof update !== 'object') return [];
+    if (Array.isArray(update)) return ['*']; // pipeline de agregación: no se analiza
+    return Object.entries(update).flatMap(([k, v]) =>
+        k.startsWith('$') ? (v && typeof v === 'object' ? Object.keys(v as object) : []) : [k]);
+};
+
+businessSchema.pre('save', function (next) {
+    this.$locals.bizmapDirty = this.isNew || touchesMap(this.modifiedPaths());
+    next();
+});
+businessSchema.post('save', async function () {
+    if (this.$locals.bizmapDirty) await bumpBizmapVersion();
+});
+
+const QUERY_UPDATES = ['findOneAndUpdate', 'updateOne', 'updateMany', 'findOneAndReplace', 'replaceOne'] as const;
+businessSchema.pre(QUERY_UPDATES as any, function (this: any, next: () => void) {
+    this._bizmapDirty = touchesMap(updatedPaths(this.getUpdate()));
+    next();
+});
+businessSchema.post(QUERY_UPDATES as any, async function (this: any) {
+    if (this._bizmapDirty) await bumpBizmapVersion();
+});
+businessSchema.post(['findOneAndDelete', 'deleteOne', 'deleteMany'] as any, { document: false, query: true } as any, async () => {
+    await bumpBizmapVersion();
+});
+businessSchema.post('deleteOne', { document: true, query: false }, async () => {
+    await bumpBizmapVersion();
+});
+businessSchema.post('insertMany', async () => {
+    await bumpBizmapVersion();
 });
 
 businessSchema.set('toJSON', {

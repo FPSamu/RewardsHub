@@ -15,6 +15,8 @@
 import { ReportData, DailyReport, ShiftSummary } from './report.service';
 import axios from 'axios';
 
+// pdfkit se carga con require (su export no encaja con esModuleInterop)
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit');
 
 // ─── Colour palette ────────────────────────────────────────────────────────────
@@ -40,6 +42,8 @@ const SAFE_BOTTOM = PAGE_H - FOOTER_H - 20;
 
 // ─── Public entry point ────────────────────────────────────────────────────────
 export async function generateReportPDF(reportData: ReportData): Promise<Buffer> {
+    // El executor async es código existente: los errores se atrapan adentro con try/catch → reject
+    // eslint-disable-next-line no-async-promise-executor
     return new Promise(async (resolve, reject) => {
         try {
             let logoBuffer: Buffer | null = null;

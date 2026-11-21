@@ -4,6 +4,8 @@ import connectDb from './db/mongoose';
 import os from 'os';
 import { runNotificationBatch, runEngagementBatch } from './services/notification.service';
 import { isQueueEnabled } from './queue/sqs';
+import { closeRedis, warmUpRedis } from './cache/redis';
+import { startMetrics, stopMetrics } from './observability/metrics';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 const host = '0.0.0.0'; // Listen on all network interfaces
@@ -19,6 +21,9 @@ const start = async () => {
         scheduleNotifications();
         scheduleEngagement();
     }
+    startMetrics('api');
+    // Conexión a Redis lista antes de recibir tráfico (sin REDIS_URL no hace nada)
+    await warmUpRedis();
     const server = app.listen(port, host, () => {
         console.log(`Server running on port ${port}`);
         console.log(`Local: http://localhost:${port}`);
@@ -39,7 +44,9 @@ const start = async () => {
     // conexiones y terminamos las peticiones en curso antes de salir.
     const shutdown = (signal: string) => {
         console.log(`🛑 ${signal} recibido, cerrando servidor...`);
-        server.close(() => process.exit(0));
+        server.close(() => {
+            Promise.allSettled([stopMetrics(), closeRedis()]).finally(() => process.exit(0));
+        });
         setTimeout(() => process.exit(0), 25_000).unref();
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));

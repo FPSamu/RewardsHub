@@ -12,14 +12,15 @@ import { Router } from 'express';
 import * as userPointsCtrl from '../controllers/userPoints.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
 import { authenticate } from '../middleware/auth.middleware';
+import { idempotent } from '../middleware/idempotency.middleware';
 
 const router = Router();
 
 // Business endpoint: Add points/stamps to a user
-router.post('/add', authenticateBusiness, userPointsCtrl.addPointsOrStamps);
+router.post('/add', authenticateBusiness, idempotent(), userPointsCtrl.addPointsOrStamps);
 
 // Business endpoint: Subtract points/stamps from a user
-router.post('/subtract', authenticateBusiness, userPointsCtrl.subtractPointsOrStamps);
+router.post('/subtract', authenticateBusiness, idempotent(), userPointsCtrl.subtractPointsOrStamps);
 
 // Business endpoint: Get all users with points/stamps at this business
 router.get('/business-users', authenticateBusiness, userPointsCtrl.getAllUsersForBusiness);

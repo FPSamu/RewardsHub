@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .env
+# .env propios de cada entorno (p. ej. .env.lab para AWS Academy); los ejemplos sí se versionan
+.env.lab
+.env.*
+!.env.example
+!.env.lab.example
 .vscode/
 .DS_Store
 coverage/

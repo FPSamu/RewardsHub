@@ -1,0 +1,92 @@
+#!/bin/bash
+# Arranque de la instancia de Grafana (P6). Logs: /var/log/cloud-init-output.log
+# Dashboards versión ${dashboards_version}
+set -euxo pipefail
+
+# t3.micro tiene 1 GB: `dnf install grafana` (metadatos del repo de Grafana ~86 MB
+# + los de Amazon Linux) se quedaba sin memoria y el kernel lo mataba ("Killed",
+# visto en el lab). Con 1 GB de swap alcanza; Grafana ya instalado usa ~150 MB.
+if ! swapon --show | grep -q /swapfile; then
+  dd if=/dev/zero of=/swapfile bs=1M count=1024
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+fi
+
+# Grafana OSS desde el repo oficial
+cat > /etc/yum.repos.d/grafana.repo <<'REPO'
+[grafana]
+name=grafana
+baseurl=https://rpm.grafana.com
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+REPO
+dnf install -y --setopt=install_weak_deps=False grafana
+
+# Datasource: CloudWatch con "AWS SDK Default" → credenciales del rol de la
+# instancia (LabInstanceProfile), que tiene lectura de CloudWatch.
+mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards
+cat > /etc/grafana/provisioning/datasources/cloudwatch.yaml <<'YAML'
+apiVersion: 1
+datasources:
+  - name: CloudWatch
+    uid: cloudwatch
+    type: cloudwatch
+    isDefault: true
+    jsonData:
+      authType: default
+      defaultRegion: ${region}
+YAML
+
+cat > /etc/grafana/provisioning/dashboards/rewardshub.yaml <<'YAML'
+apiVersion: 1
+providers:
+  - name: rewardshub
+    folder: RewardsHub
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+YAML
+
+# Dashboards (en git: infra/aws/grafana/dashboards/*.json) desde el bucket de artefactos
+aws s3 cp "s3://${bucket}/grafana/dashboards/" /var/lib/grafana/dashboards/ --recursive --region ${region}
+
+# Los JSON traen marcadores (__ALB__, __QUEUE__, …) para no depender de nombres de una sesión
+for f in /var/lib/grafana/dashboards/*.json; do
+  sed -i \
+    -e 's|__REGION__|${region}|g' \
+    -e 's|__PROJECT__|${project}|g' \
+    -e 's|__ALB__|${alb}|g' \
+    -e 's|__TARGET_GROUP__|${target_group}|g' \
+    -e 's|__API_ASG__|${api_asg}|g' \
+    -e 's|__WORKER_ASG__|${worker_asg}|g' \
+    -e 's|__QUEUE__|${queue}|g' \
+    -e 's|__DLQ__|${dlq}|g' \
+    -e 's|__WAF_ACL__|${waf_acl}|g' \
+    -e 's|__WAF_RULE__|${waf_rule}|g' \
+    -e 's|__REDIS_CLUSTER__|${redis_cluster}|g' \
+    -e 's|__DDB_DAILY_STATS__|${ddb_daily_stats}|g' \
+    -e 's|__DDB_TRANSACTIONS__|${ddb_transactions}|g' \
+    "$f"
+done
+chown -R grafana:grafana /var/lib/grafana/dashboards
+
+# Contraseña de admin (output sensible grafana_admin_password) y acceso anónimo opcional
+cat >> /etc/sysconfig/grafana-server <<ENV
+GF_SECURITY_ADMIN_USER=admin
+GF_SECURITY_ADMIN_PASSWORD=${admin_password}
+GF_USERS_ALLOW_SIGN_UP=false
+GF_AUTH_ANONYMOUS_ENABLED=${anonymous_viewer}
+GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/rewardshub-lab.json
+ENV
+
+systemctl daemon-reload
+systemctl enable --now grafana-server

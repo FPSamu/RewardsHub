@@ -18,7 +18,7 @@ import {
     Message,
 } from '@aws-sdk/client-sqs';
 import { fromIni, fromInstanceMetadata } from '@aws-sdk/credential-providers';
-import { JobMessage, JobType } from './jobs';
+import { JobMessage, JobParamsMap, JobType } from './jobs';
 
 let client: SQSClient | null = null;
 
@@ -41,8 +41,12 @@ const requireQueueUrl = (): string => {
     return url;
 };
 
-export const enqueueJob = async (type: JobType, scheduledAt: Date = new Date()): Promise<string | undefined> => {
-    const body: JobMessage = { type, scheduledAt: scheduledAt.toISOString() };
+export const enqueueJob = async <T extends JobType>(
+    type: T,
+    scheduledAt: Date = new Date(),
+    params?: JobParamsMap[T]
+): Promise<string | undefined> => {
+    const body: JobMessage<T> = { type, scheduledAt: scheduledAt.toISOString(), ...(params && { params }) };
     const out = await getClient().send(new SendMessageCommand({
         QueueUrl: requireQueueUrl(),
         MessageBody: JSON.stringify(body),

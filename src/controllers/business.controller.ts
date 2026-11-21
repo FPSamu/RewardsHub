@@ -4,6 +4,12 @@ import * as authService from '../services/auth.service';
 import * as uploadService from '../services/upload.service';
 import * as emailService from '../services/email.service';
 import { BusinessModel } from '../models/business.model';
+import { CacheMeta } from '../cache/bizmapCache';
+
+/** X-Cache: HIT | MISS | BYPASS en los endpoints del mapa (para la demo de P4). */
+const setCacheHeader = (res: Response, meta: CacheMeta) => {
+    if (meta.cache) res.set('X-Cache', meta.cache);
+};
 
 export const verifyEmail = async (req: Request, res: Response) => {
     const { token } = req.query;
@@ -167,7 +173,7 @@ export const updateLocation = async (req: Request, res: Response) => {
 
     try {
         const updated = await businessService.updateBranch(biz.id, locationId, { address, name, isMain, latitude, longitude });
-        return res.json(updated);
+        return res.json(businessService.toPublicResponse(updated));
     } catch (error: any) {
         return res.status(500).json({ message: error.message || 'failed to update location' });
     }
@@ -186,7 +192,9 @@ export const getNearbyBusinesses = async (req: Request, res: Response) => {
     }
 
     try {
-        const businesses = await businessService.findNearbyBusinesses(lat, lng, maxDist);
+        const meta: CacheMeta = {};
+        const businesses = await businessService.findNearbyBusinesses(lat, lng, maxDist, undefined, meta);
+        setCacheHeader(res, meta);
         return res.json({ center: { latitude: lat, longitude: lng }, maxDistanceKm: maxDist, count: businesses.length, businesses });
     } catch {
         return res.status(500).json({ message: 'failed to find nearby businesses' });
@@ -224,7 +232,9 @@ export const getBusinessesInBounds = async (req: Request, res: Response) => {
     }
 
     try {
-        const businesses = await businessService.findBusinessesInBounds(bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng);
+        const meta: CacheMeta = {};
+        const businesses = await businessService.findBusinessesInBounds(bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng, meta);
+        setCacheHeader(res, meta);
         return res.json({ bounds, count: businesses.length, businesses });
     } catch {
         console.error('Get businesses in bounds error');
@@ -251,7 +261,9 @@ export const getAllBusinesses = async (req: Request, res: Response) => {
     }
 
     try {
-        const businesses = await businessService.getAllBusinesses(lat, lng, maxLimit);
+        const meta: CacheMeta = {};
+        const businesses = await businessService.getAllBusinesses(lat, lng, maxLimit, meta);
+        setCacheHeader(res, meta);
         return res.json({
             userLocation: lat && lng ? { latitude: lat, longitude: lng } : null,
             count: businesses.length,
@@ -300,7 +312,7 @@ export const addLocation = async (req: Request, res: Response) => {
 
     try {
         const updated = await businessService.addBranch(biz.id, address, name, latitude, longitude);
-        return res.json(updated);
+        return res.json(businessService.toPublicResponse(updated));
     } catch (error: any) {
         return res.status(500).json({ message: error.message || 'failed to add location' });
     }
@@ -351,7 +363,7 @@ export const removeLocation = async (req: Request, res: Response) => {
     const { locationId } = req.params;
     try {
         const updated = await businessService.removeBranch(biz.id, locationId);
-        return res.json(updated);
+        return res.json(businessService.toPublicResponse(updated));
     } catch {
         return res.status(500).json({ message: 'failed to remove location' });
     }

@@ -3,6 +3,7 @@ import * as ctrl from '../controllers/membership.controller';
 import { authenticateBusiness } from '../middleware/business.middleware';
 import { requireAdminPin } from '../middleware/adminPin.middleware';
 import { authenticate } from '../middleware/auth.middleware';
+import { idempotent } from '../middleware/idempotency.middleware';
 
 const router = Router();
 
@@ -20,7 +21,7 @@ router.delete('/plans/:id', authenticateBusiness, requireAdminPin, ctrl.deletePl
 
 // ── Cashier actions (business JWT only) ────────────────────────────────────
 router.get('/client/:userId',  authenticateBusiness, ctrl.getClientMembership);
-router.post('/activate',       authenticateBusiness, ctrl.activateMembership);
-router.post('/redeem',         authenticateBusiness, ctrl.redeemDailyBenefit);
+router.post('/activate',       authenticateBusiness, idempotent(), ctrl.activateMembership);
+router.post('/redeem',         authenticateBusiness, idempotent(), ctrl.redeemDailyBenefit);
 
 export default router;

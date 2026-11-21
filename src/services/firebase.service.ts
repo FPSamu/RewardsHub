@@ -1,9 +1,25 @@
 import admin from 'firebase-admin';
 
 let initialized = false;
+let warnedNotConfigured = false;
+
+/**
+ * Sin credenciales de Firebase (p. ej. en el lab) la app arranca igual:
+ * login/registro con Firebase responden 401 y los push no se mandan.
+ * El login de cajeros (/auth/cashier-login) no usa Firebase.
+ */
+export const isFirebaseConfigured = (): boolean =>
+    Boolean(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL);
 
 const getAdmin = () => {
     if (initialized) return admin;
+    if (!isFirebaseConfigured()) {
+        if (!warnedNotConfigured) {
+            warnedNotConfigured = true;
+            console.warn('⚠️  [Firebase] FIREBASE_* no configurados: login con Firebase y notificaciones push deshabilitados.');
+        }
+        throw new Error('Firebase no está configurado (FIREBASE_PROJECT_ID / FIREBASE_PRIVATE_KEY / FIREBASE_CLIENT_EMAIL)');
+    }
 
     admin.initializeApp({
         credential: admin.credential.cert({

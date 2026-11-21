@@ -17,7 +17,21 @@ locals {
     queue_url          = aws_sqs_queue.jobs.url
     visibility_seconds = var.sqs_visibility_seconds
     frontend_url       = local.frontend_url
+    db_name            = var.lab_db_name
+    mongo_pool_size    = var.mongo_max_pool_size
+    geo_query_mode     = var.geo_query_mode
+    stats_source       = var.stats_source
+    redis_url          = local.redis_url
+    rate_limits        = var.enable_rate_limits
+    cache_bizmap_ttl   = var.cache_bizmap_ttl
+    app_metrics        = var.enable_app_metrics
+    ddb_daily_stats    = local.ddb_daily_stats_table
+    ddb_transactions   = local.ddb_transactions_table
   }
+
+  # Métricas de grupo del ASG (GroupInServiceInstances…) para el dashboard de
+  # Grafana. Son gratis; solo se activan con Grafana para no cambiar nada más.
+  asg_group_metrics = var.enable_grafana ? ["GroupInServiceInstances", "GroupDesiredCapacity", "GroupPendingInstances", "GroupTerminatingInstances"] : []
 
   roles = {
     api = {
@@ -84,6 +98,8 @@ resource "aws_autoscaling_group" "api" {
     version = aws_launch_template.app["api"].latest_version
   }
 
+  enabled_metrics = local.asg_group_metrics
+
 
   tag {
     key                 = "Name"
@@ -125,6 +141,8 @@ resource "aws_autoscaling_group" "worker" {
     version = aws_launch_template.app["worker"].latest_version
   }
 
+  enabled_metrics = local.asg_group_metrics
+
 
   tag {
     key                 = "Name"
@@ -153,17 +171,22 @@ resource "aws_autoscaling_policy" "worker_in" {
   cooldown               = 300
 }
 
+# Escala por ANTIGÜEDAD del mensaje más viejo, no por cantidad: con
+# replicate-dynamo cada 10 min (y los demás trabajos programados) casi siempre
+# hay "1 mensaje visible" un instante, y contar mensajes agregaba workers sin
+# necesidad. Solo se escala si un trabajo lleva > backlog_age_seconds esperando
+# (los workers no dan abasto), dos minutos seguidos.
 resource "aws_cloudwatch_metric_alarm" "queue_backlog" {
   alarm_name          = "${var.project}-jobs-backlog"
-  alarm_description   = "Hay trabajos esperando en la cola: agregar un worker"
+  alarm_description   = "Un trabajo lleva más de ${var.backlog_age_seconds} s esperando en la cola: agregar un worker"
   namespace           = "AWS/SQS"
-  metric_name         = "ApproximateNumberOfMessagesVisible"
+  metric_name         = "ApproximateAgeOfOldestMessage"
   dimensions          = { QueueName = aws_sqs_queue.jobs.name }
   statistic           = "Maximum"
   period              = 60
   evaluation_periods  = 2
-  threshold           = 1
-  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = var.backlog_age_seconds
+  comparison_operator = "GreaterThanThreshold"
   alarm_actions       = [aws_autoscaling_policy.worker_out.arn]
 }
 

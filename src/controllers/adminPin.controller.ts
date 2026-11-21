@@ -16,6 +16,21 @@ const ADMIN_TOKEN_EXPIRY = '30m';
 
 const SALT_ROUNDS = 10;
 
+/**
+ * Manda el PIN temporal. Si no se puede (correo sin configurar o caído)
+ * responde 503 y devuelve false; el que llama no debe guardar el PIN nuevo.
+ */
+const trySendPinEmail = async (res: Response, email: string, username: string, pin: string): Promise<boolean> => {
+    try {
+        await sendAdminPinEmail(email, username, pin);
+        return true;
+    } catch (err: any) {
+        console.error('⚠️  [AdminPin] No se pudo enviar el PIN temporal:', err?.message ?? err);
+        res.status(503).json({ message: 'No se pudo enviar el correo con el PIN temporal; el PIN actual no cambió' });
+        return false;
+    }
+};
+
 /** Generates a random alphanumeric PIN of given length */
 const generateRandomPin = (length = 8): string => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars (0/O, 1/I)
@@ -26,10 +41,14 @@ const generateRandomPin = (length = 8): string => {
  * POST /business/admin-pin/generate
  * Header: x-admin-secret
  * Body: { businessId }
+ *
+ * Solo para soporte con ADMIN_SECRET. Sin ADMIN_SECRET configurado queda
+ * cerrado (antes quedaba abierto y cualquiera podía resetear el PIN de un
+ * negocio). Los negocios usan /reset.
  */
 export const generatePin = async (req: Request, res: Response): Promise<void> => {
     const adminSecret = process.env.ADMIN_SECRET;
-    if (adminSecret && req.headers['x-admin-secret'] !== adminSecret) {
+    if (!adminSecret || req.headers['x-admin-secret'] !== adminSecret) {
         res.status(403).json({ message: 'Forbidden' });
         return;
     }
@@ -49,11 +68,13 @@ export const generatePin = async (req: Request, res: Response): Promise<void> =>
     const tempPin = generateRandomPin();
     const pinHash = await bcrypt.hash(tempPin, SALT_ROUNDS);
 
+    // Primero el correo: si no se puede mandar, el PIN anterior sigue valiendo
+    // (antes se guardaba primero y un fallo dejaba un PIN que nadie conocía).
+    if (!(await trySendPinEmail(res, business.email, business.username, tempPin))) return;
+
     business.adminPinHash = pinHash;
     business.isAdminPinTemporary = true;
     await business.save();
-
-    await sendAdminPinEmail(business.email, business.username, tempPin);
 
     console.log(`🔑 [AdminPin] Temp PIN generated for business: ${business.username} (${business.email})`);
     res.json({ message: `PIN temporal generado y enviado a ${business.email}` });
@@ -165,11 +186,14 @@ export const resetPin = async (req: Request, res: Response): Promise<void> => {
     }
 
     const tempPin = generateRandomPin();
-    doc.adminPinHash = await bcrypt.hash(tempPin, SALT_ROUNDS);
+    const pinHash = await bcrypt.hash(tempPin, SALT_ROUNDS);
+
+    // Primero el correo: si no se puede mandar, el PIN anterior sigue valiendo
+    if (!(await trySendPinEmail(res, doc.email, doc.username, tempPin))) return;
+
+    doc.adminPinHash = pinHash;
     doc.isAdminPinTemporary = true;
     await doc.save();
-
-    await sendAdminPinEmail(doc.email, doc.username, tempPin);
 
     console.log(`🔑 [AdminPin] PIN reset for business: ${doc.username} (${doc.email})`);
     res.json({ message: `PIN temporal enviado a ${doc.email}` });

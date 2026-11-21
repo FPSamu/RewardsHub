@@ -8,7 +8,9 @@ import * as userPointsService from '../services/userPoints.service';
 import * as systemService from '../services/system.service';
 import * as userService from '../services/user.service';
 import * as transactionService from '../services/transaction.service';
-import * as businessService from '../services/business.service';
+import { withTransaction } from '../db/withTransaction';
+
+type TransactionItemInput = Parameters<typeof transactionService.createTransaction>[5][number];
 
 const resolveBranchId = (business: any, branchId?: string): { id?: string } => {
     const locations = business?.locations || [];
@@ -92,7 +94,7 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
         }
 
         // Process stamps if stampData is provided
-        let stampSystems: Array<{ system: any, count: number }> = [];
+        const stampSystems: Array<{ system: any, count: number }> = [];
         if (stampData && stampData.length > 0) {
             for (const stamp of stampData) {
                 if (!stamp.rewardSystemId || stamp.stampsCount === undefined || stamp.stampsCount <= 0) {
@@ -127,17 +129,11 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
             }
         }
 
-        // Add points and stamps
-        const updatedUserPoints = await userPointsService.addPointsAndStamps(
-            userId,
-            business.id,
-            pointsSystem,
-            purchaseAmount,
-            stampSystems
-        );
+        // La sucursal se resuelve antes de escribir: si es inválida, no se toca el saldo
+        const resolvedBranch = resolveBranchId(business, locationId || branchId);
 
         // Create transaction record
-        const transactionItems = [];
+        const transactionItems: TransactionItemInput[] = [];
         
         if (pointsSystem && purchaseAmount) {
             const pointsEarned = userPointsService.calculatePoints(
@@ -161,21 +157,33 @@ export const addPointsOrStamps = async (req: Request, res: Response) => {
             });
         }
 
-        const resolvedBranch = resolveBranchId(business, locationId || branchId);
+        // Saldo + historial en una sola transacción: o quedan los dos o ninguno
+        const { updatedUserPoints, transaction } = await withTransaction(async (session) => {
+            const updatedUserPoints = await userPointsService.addPointsAndStamps(
+                userId,
+                business.id,
+                pointsSystem,
+                purchaseAmount,
+                stampSystems,
+                session
+            );
 
-        const transaction = await transactionService.createTransaction(
-            userId,
-            business.id,
-            resolvedBranch.id,
-            business.username,
-            'add',
-            transactionItems,
-            purchaseAmount,
-            undefined,
-            undefined,
-            'Purchase transaction',
-            timezone ?? business.timezone ?? 'UTC'
-        );
+            const transaction = await transactionService.createTransaction(
+                userId,
+                business.id,
+                resolvedBranch.id,
+                business.username,
+                'add',
+                transactionItems,
+                purchaseAmount,
+                undefined,
+                undefined,
+                'Purchase transaction',
+                timezone ?? business.timezone ?? 'UTC',
+                session
+            );
+            return { updatedUserPoints, transaction };
+        });
 
         return res.status(200).json({
             message: 'Points and/or stamps added successfully',
@@ -376,7 +384,7 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
         }
 
         // Process stamps if stampData is provided
-        let stampSystems: Array<{ system: any, count: number }> = [];
+        const stampSystems: Array<{ system: any, count: number }> = [];
         if (stampData && stampData.length > 0) {
             for (const stamp of stampData) {
                 if (!stamp.rewardSystemId || stamp.stampsCount === undefined || stamp.stampsCount <= 0) {
@@ -401,17 +409,11 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
             }
         }
 
-        // Subtract points and stamps
-        const updatedUserPoints = await userPointsService.subtractPointsAndStamps(
-            userId,
-            business.id,
-            pointsSystem,
-            pointsToSubtract,
-            stampSystems
-        );
+        // La sucursal se resuelve antes de escribir: si es inválida, no se toca el saldo
+        const resolvedBranch = resolveBranchId(business, locationId || branchId);
 
         // Create transaction record
-        const transactionItems = [];
+        const transactionItems: TransactionItemInput[] = [];
         
         if (pointsSystem && pointsToSubtract) {
             transactionItems.push({
@@ -431,21 +433,33 @@ export const subtractPointsOrStamps = async (req: Request, res: Response) => {
             });
         }
 
-        const resolvedBranch = resolveBranchId(business, locationId || branchId);
+        // Saldo + historial en una sola transacción: o quedan los dos o ninguno
+        const { updatedUserPoints, transaction } = await withTransaction(async (session) => {
+            const updatedUserPoints = await userPointsService.subtractPointsAndStamps(
+                userId,
+                business.id,
+                pointsSystem,
+                pointsToSubtract,
+                stampSystems,
+                session
+            );
 
-        const transaction = await transactionService.createTransaction(
-            userId,
-            business.id,
-            resolvedBranch.id,
-            business.username,
-            'subtract',
-            transactionItems,
-            undefined,
-            undefined,
-            undefined,
-            'Points/stamps subtraction',
-            timezone ?? business.timezone ?? 'UTC'
-        );
+            const transaction = await transactionService.createTransaction(
+                userId,
+                business.id,
+                resolvedBranch.id,
+                business.username,
+                'subtract',
+                transactionItems,
+                undefined,
+                undefined,
+                undefined,
+                'Points/stamps subtraction',
+                timezone ?? business.timezone ?? 'UTC',
+                session
+            );
+            return { updatedUserPoints, transaction };
+        });
 
         return res.status(200).json({
             message: 'Points and/or stamps subtracted successfully',

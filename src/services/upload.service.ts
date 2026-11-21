@@ -16,6 +16,10 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = 'rewards-hub-app';
 
+/** Sin llaves de S3 (p. ej. en el lab) no se pueden subir logos ni fotos; todo lo demás funciona. */
+export const isUploadConfigured = (): boolean =>
+    Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+
 /**
  * Upload a file to S3
  * @param file - The file object from multer
@@ -23,6 +27,9 @@ const BUCKET_NAME = 'rewards-hub-app';
  * @returns The public URL of the uploaded file
  */
 export const uploadFile = async (file: Express.Multer.File, folder: string = 'uploads'): Promise<string> => {
+    if (!isUploadConfigured()) {
+        throw new Error('Subida de archivos deshabilitada: faltan AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY');
+    }
     // Generate a unique filename
     const fileExtension = file.originalname.split('.').pop();
     const randomName = crypto.randomBytes(16).toString('hex');

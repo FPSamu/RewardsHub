@@ -23,6 +23,8 @@ export interface Business {
 }
 
 declare global {
+  // Ampliar Express.Request es la forma documentada de tipar req.user / req.business
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: User;
