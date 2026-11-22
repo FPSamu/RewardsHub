@@ -19,6 +19,36 @@ export const buildConnectOptions = (env: NodeJS.ProcessEnv = process.env): Conne
     return options;
 };
 
+/**
+ * Esperas entre reintentos de la conexión inicial (MONGO_CONNECT_RETRIES).
+ * Sin la variable (local, Render): [] → un solo intento, como siempre.
+ * En el lab la API y los workers pueden arrancar antes que la instancia de
+ * Mongo: 1 s, 2 s, 4 s… hasta 30 s entre intentos.
+ */
+export const connectRetryDelaysMs = (env: NodeJS.ProcessEnv = process.env): number[] => {
+    const retries = parseInt(env.MONGO_CONNECT_RETRIES ?? '', 10);
+    if (!Number.isInteger(retries) || retries <= 0) return [];
+    return Array.from({ length: retries }, (_, i) => Math.min(1000 * 2 ** i, 30_000));
+};
+
+/** Corre `connect`; si falla, espera delays[i] y reintenta. Tras el último, relanza el error. */
+export const connectWithRetry = async <T>(
+    connect: () => Promise<T>,
+    delays: number[],
+    { sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)), log = console.warn }:
+        { sleep?: (ms: number) => Promise<void>; log?: (msg: string) => void } = {}
+): Promise<T> => {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await connect();
+        } catch (err: any) {
+            if (attempt >= delays.length) throw err;
+            log(`⏳ MongoDB no responde (intento ${attempt + 1}/${delays.length + 1}: ${err?.message ?? err}); reintento en ${Math.round(delays[attempt] / 1000)} s`);
+            await sleep(delays[attempt]);
+        }
+    }
+};
+
 export const connectDb = async (): Promise<void> => {
     if (!uri) {
         console.warn('MONGO_URI not set, skipping MongoDB connection');
@@ -26,7 +56,7 @@ export const connectDb = async (): Promise<void> => {
     }
     try {
         // connect with a default dbName to avoid relying on connection string
-        await mongoose.connect(uri, buildConnectOptions());
+        await connectWithRetry(() => mongoose.connect(uri, buildConnectOptions()), connectRetryDelaysMs());
         console.log('Connected to MongoDB');
     } catch (err) {
         console.error('MongoDB connection error:', err);

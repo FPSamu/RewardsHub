@@ -72,4 +72,14 @@ resource "aws_s3_object" "env" {
   source                 = var.env_file
   etag                   = filemd5(var.env_file)
   server_side_encryption = "AES256"
+
+  lifecycle {
+    # El lab nunca se conecta a Atlas ni a otra base fuera de AWS: MONGO_URI lo
+    # pone Terraform (mongo.tf) en /etc/rewardshub.env. Si el env_file trae uno,
+    # los scripts o un cambio futuro podrían terminar usándolo.
+    precondition {
+      condition     = !can(regex("(?m)^[ \\t]*(export[ \\t]+)?MONGO_URI[ \\t]*=", file(var.env_file))) && !strcontains(file(var.env_file), "mongodb+srv")
+      error_message = "El env_file no debe traer MONGO_URI ni ningún mongodb+srv:// (el lab usa la MongoDB de mongo.tf). Bórralo de .env.lab."
+    }
+  }
 }

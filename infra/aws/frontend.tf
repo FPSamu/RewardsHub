@@ -10,22 +10,25 @@
 locals {
   # Ruta absoluta (p. ej. /home/luis/rew_hub/rew_hub_front/RewardsHubFront) o relativa a infra/aws
   frontend_dir = startswith(var.frontend_dir, "/") ? var.frontend_dir : abspath("${path.module}/${var.frontend_dir}")
+  # Si la carpeta no existe (p. ej. un checkout limpio sin el repo del frontend
+  # al lado), se omite el frontend en vez de fallar: la API se despliega igual.
+  frontend_enabled = var.enable_frontend && fileexists("${local.frontend_dir}/package.json")
   # Cambia cuando cambia el código del frontend → se recompila y se resube.
-  frontend_files = var.enable_frontend ? sort(concat(
+  frontend_files = local.frontend_enabled ? sort(concat(
     tolist(fileset(local.frontend_dir, "src/**")),
     tolist(fileset(local.frontend_dir, "public/**")),
     [for f in ["index.html", "package-lock.json", "vite.config.js", "tailwind.config.js", "postcss.config.cjs", ".env.local", ".env.production"] :
     f if fileexists("${local.frontend_dir}/${f}")],
   )) : []
   frontend_hash = sha1(join("", [for f in local.frontend_files : filesha1("${local.frontend_dir}/${f}")]))
-  frontend_url  = var.enable_frontend ? aws_cloudformation_stack.frontend[0].outputs["WebsiteURL"] : ""
+  frontend_url  = local.frontend_enabled ? aws_cloudformation_stack.frontend[0].outputs["WebsiteURL"] : ""
 }
 
 # Bucket vía CloudFormation por la misma SCP del lab que en artifact.tf.
 # Lectura pública (es un sitio web) y error document = index.html para que las
 # rutas de la SPA (/login, /business/...) carguen la app.
 resource "aws_cloudformation_stack" "frontend" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.frontend_enabled ? 1 : 0
   name  = "${var.project}-frontend"
 
   template_body = jsonencode({
@@ -76,7 +79,7 @@ resource "aws_cloudformation_stack" "frontend" {
 # código o la URL de la API. Al destruir, vacía el bucket para que
 # CloudFormation pueda borrarlo.
 resource "terraform_data" "frontend_deploy" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.frontend_enabled ? 1 : 0
 
   triggers_replace = {
     hash   = local.frontend_hash

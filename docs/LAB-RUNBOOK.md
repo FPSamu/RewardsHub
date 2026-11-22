@@ -54,7 +54,7 @@ cd /home/luis/rew_hub/rew_hub_back/RewardsHub
 node -v            # v22.x
 which npm          # /home/luis/.nvm/versions/node/v22.../bin/npm  (no la de Windows)
 npm ci
-npm run typecheck && npm test   # 30 suites verdes (usan MongoDB en memoria, no tocan Atlas)
+npm run typecheck && npm test   # suites verdes (usan MongoDB en memoria, no tocan ninguna base real)
 ```
 
 > `./lab.sh up` compila el frontend con el `npm` de tu PATH: córrelo **siempre** en una terminal donde ya
@@ -79,22 +79,23 @@ Edita `.env.lab`:
 | `STRIPE_SECRET_KEY` | `sk_test_…` (modo prueba) | Nada del lab debe poder cobrar. |
 | `STRIPE_WEBHOOK_SECRET` | el de un endpoint de prueba (o cualquier `whsec_…`) | Stripe no llega al ALB del lab (HTTP); es solo para que arranque. |
 | `STRIPE_MONTHLY_PRICE_ID`, `STRIPE_YEARLY_PRICE_ID`, `STRIPE_LIFETIME_PRICE_ID` | IDs de precios **de prueba** | |
-| `MONGO_URI` | el mismo cluster | `DB_NAME=rewardshub_lab` (lo pone Terraform en las instancias) hace que se use otra base. |
+| `MONGO_URI` | **bórralo** | La base del lab es la MongoDB de `infra/aws/mongo.tf`, dentro de la VPC; Terraform pone `MONGO_URI` en `/etc/rewardshub.env`. Si `.env.lab` trae `MONGO_URI` o algún `mongodb+srv://`, `./lab.sh up` se niega a subirlo. |
 | `ADMIN_SECRET`, `LIFETIME_ACCESS_CODE` | valores nuevos | No reutilizar los de producción. |
 | `NODE_ENV` | `production` | Con el frontend del lab, CORS solo acepta su URL (la pone Terraform en `ALLOWED_ORIGINS`). Con `enable_frontend = false`, el navegador no podrá llamar a la API (`curl` sí). |
 | `FIREBASE_*` | los mismos | El login pasa por Firebase; agrega el dominio del sitio del lab en *Authorized domains* (ver README → Frontend). |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | los de S3 de siempre, o vacíos | Solo sirven para subir logos/fotos (otra cuenta). Vacíos = no se pueden subir imágenes en el lab. SQS/DynamoDB/CloudWatch usan el rol de la instancia, nunca estas llaves. |
 
-> **No pongas en `.env.lab`** `SQS_QUEUE_URL`, `REDIS_URL`, `DDB_*`, `DB_NAME`, `RATE_LIMITS`, `METRICS_ENABLED`,
+> **No pongas en `.env.lab`** `MONGO_URI`, `SQS_QUEUE_URL`, `REDIS_URL`, `DDB_*`, `DB_NAME`, `RATE_LIMITS`, `METRICS_ENABLED`,
 > `GEO_QUERY_MODE`, `STATS_SOURCE` ni `TZ`: los pone Terraform en `/etc/rewardshub.env` según `terraform.tfvars`.
 
-Para que los scripts que corres desde tu máquina usen el `.env.lab` (y no el `.env`), cárgalo en la terminal.
-dotenv no pisa variables que ya existen:
+Comprobar que no quedó ningún `MONGO_URI` (solo cuenta líneas, no imprime valores):
 
 ```bash
-set -a; . ./.env.lab; set +a     # valores con espacios o "#" deben ir entre comillas en el archivo
-echo "$MONGO_URI" | cut -c1-30   # comprobar que cargó (sin imprimir la contraseña completa)
+grep -cE '^\s*(export\s+)?MONGO_URI|mongodb\+srv' .env.lab   # debe imprimir 0
 ```
+
+Los scripts que tocan la base (seed, conciliación, comparación de fuentes…) ya no corren desde tu máquina:
+Mongo solo es alcanzable dentro de la VPC. Se corren con `./lab.sh seed` / `./lab.sh run` (C.2, C.6).
 
 ### A.3 `terraform.tfvars`
 
@@ -136,13 +137,12 @@ aws ec2 describe-availability-zones --profile academy --region us-east-1 --query
 El último comando debe imprimir `"us-east-1a"`. Si da error, las credenciales son de una sesión terminada:
 repite 1–3. **Cada sesión nueva = credenciales nuevas.**
 
-### A.5 MongoDB Atlas
+### A.5 MongoDB del lab (no hay nada que configurar)
 
-1. **Network Access** → **Add IP Address** → `0.0.0.0/0` con comentario `lab sistemas-escalables`
-   (las IP de las instancias cambian en cada sesión). Bórrala al terminar la práctica.
-2. **Database Access**: el usuario del `MONGO_URI` necesita lectura/escritura en `rewardshub_lab`
-   (`readWriteAnyDatabase`, o un rol específico sobre esa base).
-3. Las transacciones (P1) funcionan en cualquier tier de Atlas (es replica set).
+`./lab.sh up` crea `rewardshub-mongo`: MongoDB 7.0 en Docker sobre una `t3.medium`, replica set `rs0` de un nodo
+(las transacciones de P1 lo necesitan), con usuario `app` que solo puede escribir en `rewardshub_lab`. Solo la
+API y los workers llegan al puerto 27017. Los datos viven en un volumen que se borra con `./lab.sh down`:
+cada sesión empieza con la base vacía (C.2).
 
 ---
 
@@ -258,28 +258,25 @@ Revisa en el plan:
 API=$(terraform output -raw api_url); curl -s "$API/health"     # {"status":"ok"}
 ```
 
-### C.2 Datos de prueba (`seed:lab`)
+### C.2 Datos de prueba (`./lab.sh seed`)
 
-Desde tu máquina, con el `.env.lab` cargado (A.2):
+Corre en una instancia de la API (por SSM, dentro de la VPC, con el entorno del servicio):
 
 ```bash
-cd /home/luis/rew_hub/rew_hub_back/RewardsHub
-. ~/.nvm/nvm.sh
-set -a; . ./.env.lab; set +a
-
-# Comprobar el candado: tiene que NEGARSE y salir con código 1
-DB_NAME=rewardshub npm run seed:lab; echo "exit $?"        # ⛔ La base "rewardshub" no parece de lab/test…
-
-# Llenar la base del lab (~50 negocios, 2000 clientes, 50 000 transacciones en 90 días); ~2–5 min
-DB_NAME=rewardshub_lab npm run seed:lab
+cd infra/aws
+./lab.sh status            # antes: MongoDB "✅ rs.status() OK · PRIMARY" y al menos un target healthy
+./lab.sh seed              # ~50 negocios, 2000 clientes, 50 000 transacciones en 90 días; ~2–5 min
 # Para regenerar desde cero:
-# DB_NAME=rewardshub_lab npm run seed:lab -- --reset
+# ./lab.sh seed --reset
+./lab.sh mongo-eval 'db.businesses.countDocuments()'   # 50
 ```
 
-Esperado: `🎉 Listo: { businesses: 50, …, transactions: 50000 }`. En Atlas → *Collections*, solo crece `rewardshub_lab`.
+Esperado: `🎉 Listo: { businesses: 50, …, transactions: 50000 }`. El candado (`assertNonProductionDb`) sigue
+activo: en el lab `DB_NAME=rewardshub_lab` y el usuario `app` no puede escribir en ninguna otra base. Que se niega
+con una base que no es de lab lo prueba `npx jest tests/cli.run.test.ts` (local).
 
-> Si la base del lab se llenó **antes** de P2.1 (sin `geo`): `DB_NAME=rewardshub_lab npx ts-node scripts/migrate-locations-geo.ts`
-> (dry run) y luego `… --apply`. O regenera con `--reset`.
+> Si la base del lab se llenó **antes** de P2.1 (sin `geo`): `./lab.sh run migrate-locations-geo` (dry run) y luego
+> `./lab.sh run migrate-locations-geo --apply`. O regenera con `--reset`.
 
 ### C.3 Backfill de `daily_stats`
 
@@ -315,19 +312,14 @@ donde quedó (`caughtUp: false` → `true`).
 
 ### C.6 Comparar las fuentes de estadísticas
 
-Solo lectura, desde tu máquina:
+Solo lectura, dentro de la VPC (la instancia ya tiene `TZ=UTC` y las `DDB_*`):
 
 ```bash
-cd /home/luis/rew_hub/rew_hub_back/RewardsHub
-set -a; . ./.env.lab; set +a
-DB_NAME=rewardshub_lab TZ=UTC \
-DDB_DAILY_STATS_TABLE=rewardshub-daily-stats DDB_TRANSACTIONS_TABLE=rewardshub-transactions \
-DDB_AWS_PROFILE=academy \
-npx ts-node scripts/compare-stats-sources.ts --businesses 10 --days 30
+./lab.sh run compare-stats-sources --businesses 10 --days 30
 ```
 
 Esperado: una fila por negocio con `✅` en `daily` y `dynamo`, y `✅ Todas las fuentes coinciden.`
-Sin DynamoDB, quita las tres variables `DDB_*`: compara solo live vs daily.
+Con `enable_dynamo = false` compara solo live vs daily.
 
 ---
 
@@ -355,20 +347,23 @@ con retraso **< 15 min**, URL de Grafana.
 
 ### D.2 Datos y conciliación — aceptación 2
 
-Hecho en C.2–C.4. **Esperado:** `daily_stats` llena (Atlas → `rewardshub_lab.daily_stats`, ~50 × 91 filas
-"business") y `reconcile-balances` con `mismatchCount: 0`.
+Hecho en C.2–C.4. **Esperado:** `daily_stats` llena (`./lab.sh mongo-eval 'db.daily_stats.countDocuments({branchId: null})'`,
+~50 × 91 filas "business") y `reconcile-balances` con `mismatchCount: 0`.
 
 Variante (conciliación detecta y arregla):
 
-1. Atlas → *Collections* → `rewardshub_lab.userpoints` → un documento → **Edit**: suma 7 a
-   `businessPoints.0.rewardSystems.0.points` **y** a `businessPoints.0.points` → **Update**.
+1. Suma 7 a `businessPoints.0.rewardSystems.0.points` **y** a `businessPoints.0.points` de un documento:
+
+   ```bash
+   ./lab.sh mongo-eval 'db.userpoints.updateOne({"businessPoints.0.rewardSystems.0": {$exists: true}}, {$inc: {"businessPoints.0.points": 7, "businessPoints.0.rewardSystems.0.points": 7}})'
+   ```
+
 2. `./lab.sh enqueue reconcile-balances` → **Esperado:** `mismatchCount: 1`. Copia el `runKey` del log.
 3. Arreglar (dry run y luego aplicar):
 
    ```bash
-   set -a; . ./.env.lab; set +a
-   DB_NAME=rewardshub_lab npx ts-node scripts/reconcile-fix.ts --run "<runKey>"           # would_fix: 1
-   DB_NAME=rewardshub_lab npx ts-node scripts/reconcile-fix.ts --run "<runKey>" --apply   # fixed: 1
+   ./lab.sh run reconcile-fix --run "<runKey>"           # would_fix: 1
+   ./lab.sh run reconcile-fix --run "<runKey>" --apply   # fixed: 1
    ```
 
 4. `./lab.sh enqueue reconcile-balances` → **Esperado:** `mismatchCount: 0`.
@@ -486,7 +481,7 @@ aws ssm get-command-invocation --command-id <CID> --instance-id <ID> --profile a
 |---|---|---|
 | `Target.FailedHealthChecks` los primeros ~10 min | La instancia sigue instalando y compilando | Esperar (gracia de 600 s). |
 | `npm ERR`, `tsc` en `cloud-init-output.log` | El código no compila | `npm run build` local, arreglar, `./lab.sh up && ./lab.sh roll`. |
-| `MongoServerSelectionError` / timeout | Atlas no acepta la IP | A.5 (Network Access `0.0.0.0/0`). |
+| `⏳ MongoDB no responde` / `MongoServerSelectionError` | La instancia de Mongo sigue arrancando (~2 min) o está caída | `./lab.sh status` (sección MongoDB). En la instancia `rewardshub-mongo`: `journalctl -u rewardshub-mongo`, `journalctl -u rewardshub-mongo-init`, `/var/log/cloud-init-output.log`. La API reintenta sola (`MONGO_CONNECT_RETRIES`). |
 | `Neither apiKey nor config.authenticator provided` | Falta `STRIPE_SECRET_KEY` en `.env.lab` | A.2, luego `./lab.sh up && ./lab.sh roll`. |
 | `FIREBASE` / `JWT` en el log | Faltan variables en `.env.lab` | Completar y `up` + `roll`. |
 | Unhealthy tras un `roll` que falló | Instancias con launch template viejo | `./lab.sh roll` otra vez. |
@@ -557,7 +552,7 @@ aws cloudformation describe-stacks $P --query 'Stacks[?starts_with(StackName, `r
 aws wafv2 list-web-acls --scope REGIONAL $P --query 'WebACLs[?starts_with(Name, `rewardshub`)].Name'
 ```
 
-Luego, en el Learner Lab: **End Lab**. Al terminar la práctica: borra la regla `0.0.0.0/0` de Atlas (A.5).
+Luego, en el Learner Lab: **End Lab**. La base del lab se borró con la instancia de Mongo.
 
 Si algo quedó (p. ej. `down` falló a medias por credenciales caducadas): renueva credenciales (A.4) y repite
 `./lab.sh down`. Lo que esté fuera del estado de Terraform (las pruebas `rh-probe` de B) se borra con los

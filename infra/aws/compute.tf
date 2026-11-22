@@ -18,6 +18,8 @@ locals {
     visibility_seconds = var.sqs_visibility_seconds
     frontend_url       = local.frontend_url
     db_name            = var.lab_db_name
+    mongo_uri          = local.mongo_uri
+    mongo_retries      = var.mongo_connect_retries
     mongo_pool_size    = var.mongo_max_pool_size
     geo_query_mode     = var.geo_query_mode
     stats_source       = var.stats_source

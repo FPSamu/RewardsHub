@@ -1,0 +1,212 @@
+#!/bin/bash
+# Arranque de la instancia de MongoDB del lab (mongo.tf).
+# Logs de este script: /var/log/cloud-init-output.log
+# Logs de Mongo:       journalctl -u rewardshub-mongo -f   (o docker logs mongo)
+# Estado:              sudo rh-mongo-health
+#
+# Idempotente: se puede volver a correr sin romper nada (no formatea un disco
+# con datos, no reinicia el replica set ni duplica usuarios).
+# Sin `set -x`: este script escribe contraseñas y no deben quedar en el log.
+set -euo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+# ── Volumen de datos (/dev/sdf → /data/db) ──────────────────────────────────
+# En instancias Nitro el volumen aparece como /dev/nvmeXn1; las reglas udev de
+# AL2023 (amazon-ec2-utils) crean el enlace /dev/sdf. Si no aparece, se usa
+# el único disco sin particiones que no es el del sistema.
+find_data_disk() {
+  local c root
+  for c in /dev/sdf /dev/xvdf; do
+    if [ -b "$c" ]; then readlink -f "$c"; return 0; fi
+  done
+  root=$(lsblk -no PKNAME "$(findmnt -no SOURCE /)")
+  for c in $(lsblk -dpno NAME,TYPE | awk '$2 == "disk" {print $1}'); do
+    [ "$c" = "/dev/$root" ] && continue
+    # sin particiones: lsblk solo lista el disco mismo
+    if [ "$(lsblk -no NAME "$c" | wc -l)" -eq 1 ]; then echo "$c"; return 0; fi
+  done
+  return 1
+}
+
+DEV=""
+for _ in $(seq 90); do
+  DEV=$(find_data_disk || true)
+  [ -n "$DEV" ] && break
+  sleep 2
+done
+if [ -z "$DEV" ]; then
+  echo "❌ No apareció el volumen de datos de Mongo" >&2
+  exit 1
+fi
+echo "Volumen de datos: $DEV"
+
+# Formatear SOLO si está vacío (sin sistema de archivos)
+if [ -z "$(blkid -o value -s TYPE "$DEV" || true)" ]; then
+  mkfs.xfs "$DEV"
+fi
+UUID=$(blkid -o value -s UUID "$DEV")
+mkdir -p /data/db
+if ! grep -q "UUID=$UUID" /etc/fstab; then
+  echo "UUID=$UUID /data/db xfs defaults,nofail,x-systemd.device-timeout=30 0 2" >> /etc/fstab
+fi
+mountpoint -q /data/db || mount /data/db
+# 999 = usuario mongodb dentro de la imagen oficial
+chown 999:999 /data/db
+
+# ── Secretos (solo root) ────────────────────────────────────────────────────
+install -d -m 700 -o root -g root /etc/rewardshub-mongo
+umask 077
+cat > /etc/rewardshub-mongo/keyfile <<'KEY'
+${keyfile}
+KEY
+chown 999:999 /etc/rewardshub-mongo/keyfile
+chmod 400 /etc/rewardshub-mongo/keyfile
+
+cat > /etc/rewardshub-mongo/secrets.json <<'JSON'
+{"admin":"${admin_pw}","app":"${app_pw}","appUser":"${app_user}","db":"${db_name}","host":"${private_ip}:27017"}
+JSON
+chmod 600 /etc/rewardshub-mongo/secrets.json
+
+# Inicialización idempotente: replica set rs0 con la IP PRIVADA como host,
+# usuario admin (excepción de localhost: solo mientras no hay usuarios) y
+# usuario de la app con readWrite solo en la base del lab.
+# Las contraseñas se leen del archivo montado: nunca van en argv ni en el entorno.
+cat > /etc/rewardshub-mongo/init.js <<'JS'
+const s = JSON.parse(require('fs').readFileSync('/rh/secrets.json', 'utf8'));
+const admin = db.getSiblingDB('admin');
+
+for (let i = 0; ; i++) {
+  try { admin.runCommand({ ping: 1 }); break; } catch (e) { if (i > 180) throw e; sleep(1000); }
+}
+
+// hello no pide autenticación: setName existe solo si el replica set ya se inició
+if (!admin.runCommand({ hello: 1 }).setName) {
+  print('rs.initiate con host ' + s.host);
+  rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: s.host }] });
+} else {
+  print('replica set ya iniciado');
+}
+for (let i = 0; !admin.runCommand({ hello: 1 }).isWritablePrimary; i++) {
+  if (i > 180) throw new Error('el nodo no llegó a PRIMARY');
+  sleep(1000);
+}
+
+let authed = false;
+try { const r = admin.auth('admin', s.admin); authed = Boolean(r && r.ok); } catch (e) { /* todavía no existe */ }
+if (!authed) {
+  print('creando usuario admin');
+  admin.createUser({ user: 'admin', pwd: s.admin, roles: [{ role: 'root', db: 'admin' }] });
+  admin.auth('admin', s.admin);
+}
+
+const lab = db.getSiblingDB(s.db);
+const roles = [{ role: 'readWrite', db: s.db }];
+if (lab.getUser(s.appUser)) {
+  lab.updateUser(s.appUser, { pwd: s.app, roles: roles });
+  print('usuario ' + s.appUser + ' actualizado');
+} else {
+  lab.createUser({ user: s.appUser, pwd: s.app, roles: roles });
+  print('usuario ' + s.appUser + ' creado');
+}
+print(JSON.stringify({ ok: 1, set: admin.runCommand({ hello: 1 }).setName }));
+JS
+
+# Salud para ./lab.sh status: rs.status() como admin
+cat > /etc/rewardshub-mongo/health.js <<'JS'
+const s = JSON.parse(require('fs').readFileSync('/rh/secrets.json', 'utf8'));
+const admin = db.getSiblingDB('admin');
+admin.auth('admin', s.admin);
+const st = rs.status();
+const me = st.members.find((m) => m.self);
+print(JSON.stringify({ ok: st.ok, set: st.set, state: me ? me.stateStr : 'unknown', host: me ? me.name : null, members: st.members.length }));
+JS
+
+# Prefijo de ./lab.sh mongo-eval: conecta como el usuario de la app a la base del lab
+cat > /etc/rewardshub-mongo/connect-app.js <<'JS'
+const __s = JSON.parse(require('fs').readFileSync('/rh/secrets.json', 'utf8'));
+db = connect('mongodb://' + __s.appUser + ':' + __s.app + '@127.0.0.1:27017/' + __s.db + '?authSource=' + __s.db + '&directConnection=true');
+JS
+chmod 600 /etc/rewardshub-mongo/*.js
+umask 022
+
+cat > /usr/local/sbin/rh-mongo-init <<'SH'
+#!/bin/bash
+set -euo pipefail
+# Esperar a que el contenedor acepte conexiones (tras un arranque o un reinicio)
+for i in $(seq 120); do
+  docker exec mongo mongosh --quiet --eval "db.runCommand({ ping: 1 }).ok" >/dev/null 2>&1 && break
+  [ "$i" -eq 120 ] && { echo "❌ Mongo no respondió" >&2; exit 1; }
+  sleep 2
+done
+exec docker exec mongo mongosh --quiet "mongodb://127.0.0.1:27017/admin?directConnection=true" --file /rh/init.js
+SH
+cat > /usr/local/sbin/rh-mongo-health <<'SH'
+#!/bin/bash
+set -euo pipefail
+exec docker exec mongo mongosh --quiet "mongodb://127.0.0.1:27017/admin?directConnection=true" --file /rh/health.js
+SH
+# rh-mongo-eval <js en base64>: corre ese JS como el usuario de la app (sin contraseñas en la línea de comandos)
+cat > /usr/local/sbin/rh-mongo-eval <<'SH'
+#!/bin/bash
+set -euo pipefail
+JS=$(printf '%s' "$1" | base64 -d)
+exec docker exec mongo mongosh --quiet --nodb --eval "load('/rh/connect-app.js'); $JS"
+SH
+chmod 700 /usr/local/sbin/rh-mongo-init /usr/local/sbin/rh-mongo-health /usr/local/sbin/rh-mongo-eval
+
+# ── Imagen (reintentos: Docker Hub puede fallar un momento) ─────────────────
+for i in $(seq 10); do
+  docker pull ${image} && break
+  [ "$i" -eq 10 ] && { echo "❌ docker pull ${image} falló" >&2; exit 1; }
+  sleep 10
+done
+
+# ── Servicios ───────────────────────────────────────────────────────────────
+cat > /etc/systemd/system/rewardshub-mongo.service <<UNIT
+[Unit]
+Description=MongoDB del lab (Docker ${image}, replica set rs0)
+After=docker.service network-online.target data-db.mount
+Requires=docker.service
+Wants=network-online.target
+RequiresMountsFor=/data/db
+
+[Service]
+ExecStartPre=-/usr/bin/docker rm -f mongo
+ExecStart=/usr/bin/docker run --rm --name mongo --network host \
+  -v /data/db:/data/db \
+  -v /etc/rewardshub-mongo/keyfile:/etc/mongo/keyfile:ro \
+  -v /etc/rewardshub-mongo:/rh:ro \
+  ${image} --replSet rs0 --bind_ip_all --port 27017 \
+  --keyFile /etc/mongo/keyfile --auth --wiredTigerCacheSizeGB ${wt_cache_gb}
+ExecStop=/usr/bin/docker stop -t 60 mongo
+Restart=always
+RestartSec=5
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# Corre en cada arranque (idempotente): deja rs0 iniciado y los usuarios al día
+cat > /etc/systemd/system/rewardshub-mongo-init.service <<'UNIT'
+[Unit]
+Description=Inicializa el replica set y los usuarios de MongoDB (idempotente)
+After=rewardshub-mongo.service
+Requires=rewardshub-mongo.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rh-mongo-init
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now rewardshub-mongo
+systemctl enable rewardshub-mongo-init
+systemctl restart rewardshub-mongo-init
+/usr/local/sbin/rh-mongo-health

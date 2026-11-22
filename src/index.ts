@@ -101,4 +101,7 @@ const scheduleEngagement = () => {
 
 start().catch((err) => {
     console.error('Failed to start server', err);
+    // Salir con error (p. ej. Mongo no respondió): systemd (Restart=always) o
+    // la plataforma lo vuelven a arrancar, en vez de quedar vivo sin servidor.
+    process.exit(1);
 });

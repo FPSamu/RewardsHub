@@ -15,8 +15,15 @@
 # key_name      = null              # "vockey" = SSH con la llave del lab
 
 # ── Base de datos (P0) ──────────────────────────────────────────────────────
-# lab_db_name         = "rewardshub_lab"  # DB_NAME del lab; nunca la de producción ("" = la del MONGO_URI)
-# mongo_max_pool_size = 20                # conexiones a Mongo por proceso (MONGO_MAX_POOL_SIZE)
+# MongoDB 7 en una EC2 dentro de la VPC (mongo.tf); el lab nunca usa Atlas.
+# lab_db_name               = "rewardshub_lab"  # DB_NAME del lab; el usuario de la app solo escribe aquí
+# mongo_max_pool_size       = 20                # conexiones a Mongo por proceso (MONGO_MAX_POOL_SIZE)
+# enable_mongo              = true              # false = sin base (solo para probar la infraestructura)
+# mongo_instance_type       = "t3.medium"
+# mongo_image               = "mongo:7.0"       # versión fija, nunca latest
+# mongo_volume_gb           = 20                # gp3 en /data/db; se borra con ./lab.sh down
+# mongo_wiredtiger_cache_gb = 1.5
+# mongo_connect_retries     = 20                # MONGO_CONNECT_RETRIES: la API espera a Mongo al arrancar
 
 # ── Escalado ────────────────────────────────────────────────────────────────
 # api_min        = 2
@@ -42,7 +49,7 @@
 
 # ── Frontend (sitio estático de S3) ─────────────────────────────────────────
 # enable_frontend = true
-# frontend_dir    = "../../../rewardshub_front"   # p. ej. "/home/luis/rew_hub/rew_hub_front/RewardsHubFront"
+# frontend_dir    = "../../../rewardshub_front"   # p. ej. "/home/luis/rew_hub/rew_hub_front/RewardsHubFront"; si no existe, el frontend se omite
 
 # ── Banderas de la app (P2) ─────────────────────────────────────────────────
 # geo_query_mode = "legacy"          # "geo" = mapa con índice 2dsphere
@@ -61,7 +68,7 @@
 
 # ── Observabilidad (P6) ─────────────────────────────────────────────────────
 # enable_grafana           = false   # Grafana OSS sobre CloudWatch (./lab.sh grafana da la URL)
-# admin_cidr               = null    # tu IP pública /32 (curl -s https://checkip.amazonaws.com); obligatoria con Grafana
+# admin_cidr               = null    # tu IP pública /32; si no la pones, ./lab.sh up usa la actual (checkip.amazonaws.com)
 # grafana_instance_type    = "t3.micro"
 # grafana_anonymous_viewer = false   # true: ver dashboards sin login (sigue limitado a admin_cidr)
 # enable_app_metrics       = false   # METRICS_ENABLED=true: métricas propias de la app en CloudWatch (paneles "App")

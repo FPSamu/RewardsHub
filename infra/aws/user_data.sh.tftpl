@@ -37,6 +37,11 @@ TRUST_PROXY=1
 SQS_QUEUE_URL=${queue_url}
 SQS_REGION=${region}
 SQS_VISIBILITY_SECONDS=${visibility_seconds}
+%{ if mongo_uri != "" ~}
+# MongoDB del lab (mongo.tf, dentro de la VPC). Gana sobre el .env, que no debe traer MONGO_URI.
+MONGO_URI=${mongo_uri}
+MONGO_CONNECT_RETRIES=${mongo_retries}
+%{ endif ~}
 %{ if db_name != "" ~}
 # Base propia del lab: mongoose.connect({ dbName }) ignora la base del MONGO_URI
 DB_NAME=${db_name}
@@ -72,6 +77,18 @@ ALLOWED_ORIGINS=${frontend_url}
 FRONTEND_URL=${frontend_url}
 %{ endif ~}
 ENV
+# Lleva la contraseña de Mongo: solo root (systemd lee EnvironmentFile como root)
+chmod 600 /etc/rewardshub.env
+
+# rh-cli <script> [args]: scripts de mantenimiento (dist/cli/run.js) con el
+# mismo entorno y usuario que el servicio. Lo usan ./lab.sh seed y ./lab.sh run.
+cat > /usr/local/bin/rh-cli <<'SH'
+#!/bin/bash
+exec systemd-run --quiet --uid=rewardshub --gid=rewardshub --working-directory=/opt/rewardshub \
+  -p EnvironmentFile=/etc/rewardshub.env --wait --pipe --collect \
+  /usr/local/bin/node dist/cli/run.js "$@"
+SH
+chmod 755 /usr/local/bin/rh-cli
 
 cat > /etc/systemd/system/rewardshub.service <<UNIT
 [Unit]

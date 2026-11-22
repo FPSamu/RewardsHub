@@ -49,7 +49,7 @@ variable "node_version" {
 # ── Base de datos ───────────────────────────────────────────────────────────
 
 variable "lab_db_name" {
-  description = "Base de MongoDB que usan las instancias del lab (DB_NAME). Separada de la de producción aunque el MONGO_URI del .env sea el mismo. \"\" = la base del MONGO_URI (no recomendado)."
+  description = "Base de MongoDB del lab (DB_NAME). Es la base de la instancia Mongo del lab (mongo.tf) y la única en la que el usuario de la app puede escribir. Debe terminar en _lab/_test/test (assertNonProductionDb)."
   type        = string
   default     = "rewardshub_lab"
 
@@ -60,7 +60,49 @@ variable "lab_db_name" {
 }
 
 variable "mongo_max_pool_size" {
-  description = "Conexiones a Mongo por proceso (MONGO_MAX_POOL_SIZE). El default del driver es 100; con hasta 7 procesos rebasaría el límite de un cluster compartido de Atlas."
+  description = "Conexiones a Mongo por proceso (MONGO_MAX_POOL_SIZE). El default del driver es 100; con hasta 7 procesos son 140 conexiones a la instancia Mongo del lab en vez de 700."
+  type        = number
+  default     = 20
+}
+
+# ── MongoDB en EC2 (mongo.tf) ───────────────────────────────────────────────
+
+variable "enable_mongo" {
+  description = "MongoDB 7 (replica set rs0) en una EC2 dentro de la VPC; Terraform escribe MONGO_URI en /etc/rewardshub.env. false = sin base (solo para probar la infraestructura). El lab nunca usa Atlas."
+  type        = bool
+  default     = true
+}
+
+variable "mongo_instance_type" {
+  type    = string
+  default = "t3.medium"
+}
+
+variable "mongo_image" {
+  description = "Imagen oficial de MongoDB, con versión fija (nunca latest)."
+  type        = string
+  default     = "mongo:7.0"
+
+  validation {
+    condition     = can(regex("^mongo:7\\.0(\\.[0-9]+)?$", var.mongo_image))
+    error_message = "mongo_image debe ser mongo:7.0 o mongo:7.0.N (versión fija, nunca latest)."
+  }
+}
+
+variable "mongo_volume_gb" {
+  description = "Volumen gp3 de datos (/data/db). Se borra con la instancia: los datos se pierden con ./lab.sh down."
+  type        = number
+  default     = 20
+}
+
+variable "mongo_wiredtiger_cache_gb" {
+  description = "Caché de WiredTiger. La t3.medium tiene 4 GB; el default de Mongo (50 % de RAM − 1 GB) es parecido, pero dentro de Docker conviene fijarlo."
+  type        = number
+  default     = 1.5
+}
+
+variable "mongo_connect_retries" {
+  description = "MONGO_CONNECT_RETRIES de la API y los workers: reintentos (con espera creciente, máx. 30 s) si Mongo todavía no responde al arrancar."
   type        = number
   default     = 20
 }
