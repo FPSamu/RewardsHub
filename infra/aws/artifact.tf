@@ -78,8 +78,8 @@ resource "aws_s3_object" "env" {
     # pone Terraform (mongo.tf) en /etc/rewardshub.env. Si el env_file trae uno,
     # los scripts o un cambio futuro podrían terminar usándolo.
     precondition {
-      condition     = !can(regex("(?m)^[ \\t]*(export[ \\t]+)?MONGO_URI[ \\t]*=", file(var.env_file))) && !strcontains(file(var.env_file), "mongodb+srv")
-      error_message = "El env_file no debe traer MONGO_URI ni ningún mongodb+srv:// (el lab usa la MongoDB de mongo.tf). Bórralo de .env.lab."
+      condition     = !can(regex("(?m)^[ \\t]*(export[ \\t]+)?MONGO_URI[ \\t]*=", file(var.env_file))) && !can(regex("mongodb\\+srv:", file(var.env_file)))
+      error_message = "El env_file no debe traer MONGO_URI ni ningún URI SRV de MongoDB (Atlas): el lab usa la MongoDB de mongo.tf. Bórralo de .env.lab."
     }
   }
 }
