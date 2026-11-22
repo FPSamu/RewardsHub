@@ -3,7 +3,7 @@
 Infraestructura para la práctica de sistemas escalables. **No es producción**: producción sigue en Render.
 Cubre las piezas del diagrama de arquitectura: load balancer + WAF, autoescalado de API y workers, cola SQS con
 EventBridge, MongoDB propia del lab en EC2 (dentro de la VPC), Redis (caché + rate limits), réplica de lectura en DynamoDB y Grafana.
-Cada pieza se enciende o apaga con variables de `terraform.tfvars`. Por defecto el lab trae MongoDB en EC2 y la réplica de lectura en DynamoDB (`enable_dynamo = true`, `stats_source = "dynamo"`); lo demás que no se probó con un `up` limpio sigue apagado. Sin estas variables en el entorno (local, Render) la app funciona como siempre.
+Cada pieza se enciende o apaga con variables de `terraform.tfvars`. Por defecto el lab trae MongoDB en EC2, la réplica de lectura en DynamoDB (`enable_dynamo = true`, `stats_source = "dynamo"`), Redis en ElastiCache, métricas de la app y Grafana: todo validado con un `./lab.sh up` limpio solo con defaults ([`docs/lab-evidence/2026-11-22.md`](../../docs/lab-evidence/2026-11-22.md)). `geo_query_mode` sigue en `legacy`. Sin estas variables en el entorno (local, Render) la app funciona como siempre.
 La guía paso a paso para una sesión del lab está en [`docs/LAB-RUNBOOK.md`](../../docs/LAB-RUNBOOK.md).
 
 ```

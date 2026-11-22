@@ -907,3 +907,57 @@ Never run `reconcile-fix` or `seed:lab` against production (both refuse non-lab 
 
 ## Final state of the lab (2026-11-21 ~22:05 UTC)
 Every flag is ON through `infra/aws/staging.auto.tfvars` (git-ignored; it **wins over** `terraform.tfvars`): `geo_query_mode=geo`, `stats_source=dynamo`, `daily_stats_schedule` / `reconcile_schedule` set, `redis_mode=elasticache`, `enable_rate_limits`, `enable_dynamo`, `enable_app_metrics`, `enable_grafana`. Note that `terraform.tfvars` itself still says `stats_source = "live"` and `enable_app_metrics = false`.
+
+---
+
+# PR review: MongoDB inside the lab + DynamoDB by default (2026-11-22)
+
+Review asked for: no Atlas from the lab (MongoDB on EC2 inside the VPC), DynamoDB as the default read replica, and a validation from a clean checkout with defaults only. App defaults (local/Render) are unchanged.
+
+## Phase 0 — permission checks ✅
+- `iam simulate-principal-policy` on `role/voclabs` is allowed. Every DynamoDB, ElastiCache, EC2 and SSM action we use → `allowed`. `iam:PassRole` is only allowed on `role/LabRole`.
+- `run-instances --dry-run` (t3.medium, LabInstanceProfile, IMDSv2, fixed private IP, extra gp3 20 GB with DeleteOnTermination, encrypted and unencrypted) → `DryRunOperation`.
+- Real SG probe (`rh-probe-sg*`, SG-to-SG rule on 27017) OK and deleted.
+- vCPU quota unreadable (`servicequotas` AccessDenied); `max-instances = 20` → `api_max` left at 4. Details in `infra/aws/README.md` → Limitaciones.
+
+## Phase 1 — MongoDB 7 on EC2 ✅
+- `infra/aws/mongo.tf` + `user_data_mongo.sh.tftpl`:
+  - t3.medium, `mongo:7.0` in Docker under systemd, single-node `rs0` initiated with the private IP `10.20.0.10`.
+  - Users: `admin` and `app` (readWrite only on `rewardshub_lab`). Passwords and keyfile from `random_password`, stored in root-only files.
+  - 20 GB gp3 at `/data/db` (formatted only if empty, mounted by UUID with `nofail`). SG 27017 only from the API/worker SGs. `ignore_changes = [ami, user_data]`.
+- Terraform writes `MONGO_URI` + `MONGO_CONNECT_RETRIES` into `/etc/rewardshub.env` (now `600`). `artifact.tf` refuses an env_file that contains `MONGO_URI` or `mongodb+srv`.
+- `connectDb()` retries with backoff (env-gated); `src/index.ts` exits 1 when start fails.
+- Scripts are compiled under `src/cli/*` → `dist/cli/run.js`:
+  - `./lab.sh seed`, `./lab.sh run <script>`, `./lab.sh mongo-eval`, plus Mongo health in `./lab.sh status`.
+  - `seed` clears the replication checkpoints.
+- The frontend is skipped when `frontend_dir` doesn't exist. `./lab.sh up` sets `admin_cidr` from the current public IP when unset.
+- Atlas / `0.0.0.0/0` removed from the README, the lab runbook sections and `.env.lab.example`.
+
+## Phase 2 — DynamoDB defaults ✅
+- `enable_dynamo = true`, `stats_source = "dynamo"`, plus a `check` block for `dynamo` without `enable_dynamo`.
+- `tests/replica.freshStack.test.ts` covers an empty DB, a seed with past `updatedAt`, and an advanced checkpoint followed by the seed clearing it.
+- `./lab.sh status` marks replication lag ✅ / ⚠️ (> 15 min).
+- `hash_key` deprecation left as is: the GSI `key_schema` needs a newer provider than `>= 5.60`.
+
+## Phase 3 — clean validation in the lab ✅
+Evidence: [`docs/lab-evidence/2026-11-22.md`](lab-evidence/2026-11-22.md).
+- Setup:
+  - `./lab.sh down` in the repo → state empty.
+  - Clean rsync to `/tmp/rh-clean` (no tfvars/state/node_modules; `.env.lab` without `MONGO_URI`).
+  - `./lab.sh up` with **defaults only** → 56 resources. The frontend was skipped (its repo isn't in the copy), and `admin_cidr` was auto-detected.
+- `./lab.sh status`: 2/2 healthy, workers 1/1, Mongo `PRIMARY`, ElastiCache `available`, queue/DLQ 0/0.
+  - The API and worker logs show `Connected to MongoDB`, and the "no es replica set" warning appears 0 times.
+- `./lab.sh seed` from inside the VPC took 17 s: 50 businesses, 2000 users, 50 000 transactions.
+  - It cleared 2 checkpoints that an empty replication pass had already written. That confirms the Phase 1/2 fix was needed.
+- Through the ALB:
+  - `/business/nearby` → 46 seeded branches, `X-Cache` MISS → HIT.
+  - `concurrent-redeem` add + 20 subtracts → exact (20 × 200).
+  - 30 × 40 on 773 → 19 × 200 + 11 × 400, final balance 13.
+  - Same key → 1 applied + 16 replays + 3 × 409.
+  - Mongo has exactly 40 new `subtract` transactions; `reconcile-balances` → `mismatchCount: 0`.
+- `daily-stats` 91-day backfill → 4550 business rows; `replicate-dynamo` → 13 481 + 50 041 items in 31 s.
+- `./lab.sh run compare-stats-sources` → **10/10 live == daily == dynamo**. `X-Data-Freshness` is present through the ALB. Lag 1 min.
+- Grafana: health ok, dashboard and datasource provisioned; **21/21 panels without errors, 16 with data**. The 5 empty ones had no events.
+  - → `redis_mode = "elasticache"`, `enable_grafana = true` and `enable_app_metrics = true` are now defaults.
+  - Note: my first panel-query harness sent `$region` unresolved and got `invalid input region $region`. It was a harness bug; the UI resolves variables.
+- `./lab.sh down` from the clean copy → 56 destroyed, state empty; no instances, tables, clusters, LBs, ASGs, queues, stacks or EBS volumes left.
