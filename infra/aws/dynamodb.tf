@@ -1,8 +1,13 @@
 # Réplica de lectura en DynamoDB (P5): estadísticas diarias y transacciones
 # para los reportes. La llena el job replicate-dynamo (cada 10 min) desde Mongo.
 #
-# enable_dynamo = false (default) no crea nada. La prueba de DynamoDB en el
-# lab (P5.0) está pendiente: ver README → Limitaciones.
+# enable_dynamo = true (default): probado en el lab (P5.0, README → Limitaciones).
+# false no crea nada y todo se lee de Mongo.
+#
+# Aviso "hash_key is deprecated" de terraform validate: viene de los hash_key /
+# range_key del global_secondary_index. Su reemplazo (bloque key_schema dentro
+# del índice) solo existe en versiones recientes del provider 6.x; versions.tf
+# pide >= 5.60, así que se deja como está (es solo un aviso).
 #
 # PAY_PER_REQUEST (sin capacidad reservada: con poco tráfico cuesta casi
 # nada), sin PITR ni tablas globales. Las instancias acceden con LabRole
@@ -68,6 +73,13 @@ resource "aws_dynamodb_table" "transactions" {
 
   point_in_time_recovery {
     enabled = false
+  }
+}
+
+check "stats_source_dynamo" {
+  assert {
+    condition     = var.stats_source != "dynamo" || var.enable_dynamo
+    error_message = "stats_source = \"dynamo\" sin enable_dynamo: la API leerá todo de Mongo. Usa enable_dynamo = true o stats_source = \"daily\"."
   }
 }
 

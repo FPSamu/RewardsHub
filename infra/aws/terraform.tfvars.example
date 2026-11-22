@@ -53,7 +53,7 @@
 
 # ── Banderas de la app (P2) ─────────────────────────────────────────────────
 # geo_query_mode = "legacy"          # "geo" = mapa con índice 2dsphere
-# stats_source   = "live"            # "daily" = daily_stats en Mongo; "dynamo" = réplica en DynamoDB (requiere enable_dynamo)
+# stats_source   = "dynamo"          # réplica en DynamoDB (requiere enable_dynamo); "daily" = daily_stats en Mongo; "live" = agregación completa
 
 # ── Redis (P4) — antes corre la prueba de README → Limitaciones ──────────────
 # redis_mode           = "off"       # "elasticache" | "ec2" (plan B si el lab no permite ElastiCache)
@@ -63,8 +63,8 @@
 # enable_rate_limits   = true        # RATE_LIMITS=on: por instancia sin Redis, globales con Redis
 # cache_bizmap_ttl     = 120         # segundos de caché del mapa
 
-# ── DynamoDB (P5) — antes corre la prueba de README → Limitaciones ───────────
-# enable_dynamo = false              # tablas daily-stats y transactions + job replicate-dynamo
+# ── DynamoDB (P5) — probado en el lab (README → Limitaciones) ────────────────
+# enable_dynamo = true               # tablas daily-stats y transactions + job replicate-dynamo; false = todo de Mongo
 
 # ── Observabilidad (P6) ─────────────────────────────────────────────────────
 # enable_grafana           = false   # Grafana OSS sobre CloudWatch (./lab.sh grafana da la URL)

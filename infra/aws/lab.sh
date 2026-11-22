@@ -190,10 +190,12 @@ case "${1:-}" in
           --key "{\"pk\":{\"S\":\"META#replication\"},\"sk\":{\"S\":\"$SRC\"}}" \
           --query 'Item.syncedAt.S' --output text 2>/dev/null || echo None)
         if [ "$SYNCED" = "None" ] || [ -z "$SYNCED" ]; then
-          echo "$SRC: aún sin sincronizar"
+          echo "⏳ $SRC: aún sin sincronizar (la primera pasada llega ≤ 10 min tras el up, o: ./lab.sh enqueue replicate-dynamo)"
         else
           LAG=$(( $(date -u +%s) - $(date -u -d "$SYNCED" +%s) ))
-          echo "$SRC: al día hasta $SYNCED (retraso $(( LAG / 60 )) min $(( LAG % 60 )) s)"
+          # replicate-dynamo corre cada 10 min: más de 15 min de retraso = algo no está corriendo
+          if [ "$LAG" -lt 900 ]; then MARK="✅"; else MARK="⚠️  (> 15 min: ./lab.sh logs worker | grep replicate-dynamo)"; fi
+          echo "$MARK $SRC: al día hasta $SYNCED (retraso $(( LAG / 60 )) min $(( LAG % 60 )) s)"
         fi
       done
     fi

@@ -299,7 +299,7 @@ sleep 60; ./lab.sh logs worker 40 | grep reconcile
 
 Esperado: `🧮 [reconcile] {"runKey":"reconcile-balances:…","checked":…,"mismatchCount":0,…,"orphanRewardCount":0}`.
 
-### C.5 Réplica en DynamoDB (si `enable_dynamo = true`)
+### C.5 Réplica en DynamoDB (encendida por defecto: `enable_dynamo = true`, `stats_source = "dynamo"`)
 
 ```bash
 ./lab.sh enqueue replicate-dynamo        # o esperar ≤ 10 min a EventBridge

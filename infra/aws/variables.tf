@@ -107,7 +107,7 @@ variable "mongo_connect_retries" {
   default     = 20
 }
 
-# ── Banderas de la app (todas apagadas por defecto) ─────────────────────────
+# ── Banderas de la app ──────────────────────────────────────────────────────
 
 variable "geo_query_mode" {
   description = "GEO_QUERY_MODE de la API: \"geo\" usa el índice 2dsphere en el mapa (/business/nearby, /in-bounds, /all); \"legacy\" = consulta por recuadro de siempre. La base del lab ya trae geo si se llenó con npm run seed:lab."
@@ -121,9 +121,9 @@ variable "geo_query_mode" {
 }
 
 variable "stats_source" {
-  description = "STATS_SOURCE de la API: \"daily\" lee las estadísticas del dashboard de daily_stats (+ hoy en vivo); \"dynamo\" de la réplica en DynamoDB (requiere enable_dynamo; respaldo en Mongo) y los reportes también; \"live\" = agregación completa de siempre."
+  description = "STATS_SOURCE de la API: \"dynamo\" (default en el lab) lee las estadísticas y los reportes de la réplica en DynamoDB (requiere enable_dynamo; lo que falta o si falla, de Mongo); \"daily\" de daily_stats en Mongo (+ hoy en vivo); \"live\" = agregación completa de siempre. Sin STATS_SOURCE (local, Render) es live."
   type        = string
-  default     = "live"
+  default     = "dynamo"
 
   validation {
     condition     = contains(["live", "daily", "dynamo"], var.stats_source)
@@ -177,9 +177,9 @@ variable "cache_bizmap_ttl" {
 # ── DynamoDB (P5) ───────────────────────────────────────────────────────────
 
 variable "enable_dynamo" {
-  description = "Réplica de lectura en DynamoDB (tablas daily-stats y transactions) + job replicate-dynamo. La prueba en el lab está pendiente: ver README → Limitaciones."
+  description = "Réplica de lectura en DynamoDB (tablas daily-stats y transactions) + job replicate-dynamo cada replicate_schedule. Probada en el lab (README → Limitaciones). false = todo de Mongo (usa stats_source = \"daily\" o \"live\")."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "replicate_schedule" {
