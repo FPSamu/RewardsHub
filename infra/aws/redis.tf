@@ -2,12 +2,12 @@
 # instancias de la API.
 #
 # var.redis_mode:
-#   "off"         → nada (default). La API funciona igual: caché apagada y
-#                   límites por instancia (en memoria).
-#   "elasticache" → ElastiCache for Redis, cache.t3.micro, 1 nodo, sin snapshots.
+#   "elasticache" → (default) ElastiCache for Redis, cache.t3.micro, 1 nodo, sin snapshots.
+#   "off"         → nada. La API funciona igual: caché apagada y límites por
+#                   instancia (en memoria).
 #   "ec2"         → plan B si el lab no permite ElastiCache: una t3.micro con
 #                   Valkey/Redis 6 (AL2023), con LabInstanceProfile.
-# La prueba de ElastiCache en el lab (P4.0) está pendiente: ver README → Limitaciones.
+# ElastiCache se probó en el lab (P4.0): ver README → Limitaciones.
 #
 # En los dos modos el puerto 6379 solo acepta tráfico desde los security
 # groups de la API y los workers. Sin TLS ni contraseña (HTTP-only lab, red

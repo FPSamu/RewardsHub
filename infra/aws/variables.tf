@@ -134,9 +134,9 @@ variable "stats_source" {
 # ── Redis (P4) ──────────────────────────────────────────────────────────────
 
 variable "redis_mode" {
-  description = "\"off\" (default) | \"elasticache\" | \"ec2\" (plan B si el lab no permite ElastiCache). Ver README → Limitaciones: la prueba de ElastiCache está pendiente."
+  description = "\"elasticache\" (default, probado en el lab) | \"ec2\" (plan B: Valkey en una t3.micro) | \"off\" (caché apagada, rate limits por instancia)."
   type        = string
-  default     = "off"
+  default     = "elasticache"
 
   validation {
     condition     = contains(["off", "elasticache", "ec2"], var.redis_mode)
@@ -197,9 +197,9 @@ variable "backlog_age_seconds" {
 # ── Observabilidad (P6) ─────────────────────────────────────────────────────
 
 variable "enable_grafana" {
-  description = "Instancia t3.micro con Grafana OSS sobre CloudWatch. Requiere admin_cidr."
+  description = "Instancia t3.micro con Grafana OSS sobre CloudWatch (default true). Solo se abre a admin_cidr; si no lo pones, ./lab.sh up usa tu IP pública actual."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "admin_cidr" {
@@ -225,9 +225,9 @@ variable "grafana_anonymous_viewer" {
 }
 
 variable "enable_app_metrics" {
-  description = "METRICS_ENABLED=true en la API y los workers: publican métricas propias (namespace RewardsHub) con PutMetricData cada 60 s."
+  description = "METRICS_ENABLED=true en la API y los workers: publican métricas propias (namespace RewardsHub) con PutMetricData cada 60 s (paneles App de Grafana). Default true."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # ── Escalado ────────────────────────────────────────────────────────────────

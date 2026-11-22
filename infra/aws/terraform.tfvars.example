@@ -55,8 +55,8 @@
 # geo_query_mode = "legacy"          # "geo" = mapa con índice 2dsphere
 # stats_source   = "dynamo"          # réplica en DynamoDB (requiere enable_dynamo); "daily" = daily_stats en Mongo; "live" = agregación completa
 
-# ── Redis (P4) — antes corre la prueba de README → Limitaciones ──────────────
-# redis_mode           = "off"       # "elasticache" | "ec2" (plan B si el lab no permite ElastiCache)
+# ── Redis (P4) — probado en el lab (README → Limitaciones) ───────────────────
+# redis_mode           = "elasticache"  # "ec2" (plan B: Valkey en EC2) | "off"
 # redis_node_type      = "cache.t3.micro"  # modo elasticache
 # redis_engine_version = "7.1"             # modo elasticache (parameter group default.redis7)
 # redis_instance_type  = "t3.micro"        # modo ec2
@@ -67,8 +67,8 @@
 # enable_dynamo = true               # tablas daily-stats y transactions + job replicate-dynamo; false = todo de Mongo
 
 # ── Observabilidad (P6) ─────────────────────────────────────────────────────
-# enable_grafana           = false   # Grafana OSS sobre CloudWatch (./lab.sh grafana da la URL)
+# enable_grafana           = true    # Grafana OSS sobre CloudWatch (./lab.sh grafana da la URL)
 # admin_cidr               = null    # tu IP pública /32; si no la pones, ./lab.sh up usa la actual (checkip.amazonaws.com)
 # grafana_instance_type    = "t3.micro"
 # grafana_anonymous_viewer = false   # true: ver dashboards sin login (sigue limitado a admin_cidr)
-# enable_app_metrics       = false   # METRICS_ENABLED=true: métricas propias de la app en CloudWatch (paneles "App")
+# enable_app_metrics       = true    # METRICS_ENABLED=true: métricas propias de la app en CloudWatch (paneles "App")

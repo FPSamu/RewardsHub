@@ -6,7 +6,8 @@
 # (grafana/dashboards/*.json, en git), así que la instancia es desechable.
 # Su IP pública cambia en cada sesión del lab → `./lab.sh grafana` da la URL.
 #
-# enable_grafana = false (default) no crea nada.
+# enable_grafana = true (default). admin_cidr: si no lo pones, ./lab.sh up usa tu IP
+# pública (nunca 0.0.0.0/0). enable_grafana = false no crea nada.
 
 locals {
   grafana_dashboards_dir = "${path.module}/grafana/dashboards"
