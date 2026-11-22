@@ -20,3 +20,4 @@ certs/certs/
 __pycache__/
 *.blend1
 .claude/settings.local.json
+.claude.settings.local.json
