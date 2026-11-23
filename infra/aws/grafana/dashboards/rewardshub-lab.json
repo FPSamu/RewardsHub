@@ -503,7 +503,7 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "CPU promedio por ASG (objetivo 60 %)",
+      "title": "CPU promedio por ASG (objetivo 40 %)",
       "description": "La línea roja es api_cpu_target: arriba de ella el ASG de la API agrega instancias.",
       "datasource": {
         "type": "cloudwatch",
@@ -582,7 +582,7 @@
               },
               {
                 "color": "red",
-                "value": 60
+                "value": 40
               }
             ]
           }

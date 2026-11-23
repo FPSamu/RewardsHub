@@ -101,11 +101,18 @@ resource "terraform_data" "frontend_deploy" {
       AWS_REGION   = var.region
       VITE_API_URL = "http://${aws_lb.api.dns_name}"
       VITE_APP_URL = local.frontend_url
-      OUT          = abspath("${path.module}/.build/frontend")
-      BUCKET       = aws_cloudformation_stack.frontend[0].outputs["BucketName"]
+      # Relativa a working_dir (la carpeta del frontend; dist/ ya está en su
+      # .gitignore). Una ruta absoluta se rompe en WSL cuando node/npx es el de
+      # Windows: "/mnt/c/..." lo interpreta como C:\mnt\c\... y aws no lo encuentra.
+      OUT    = "dist/lab"
+      BUCKET = aws_cloudformation_stack.frontend[0].outputs["BucketName"]
     }
     command = <<-SH
       set -e
+      # En WSL sin node propio, npx es el de Windows y no recibe las variables
+      # de Linux salvo las listadas en WSLENV; sin esto el build usaría las URLs
+      # de .env.production. En Linux/macOS no tiene efecto.
+      export WSLENV="VITE_API_URL:VITE_APP_URL$${WSLENV:+:$WSLENV}"
       [ -d node_modules ] || npm ci --no-audit --no-fund
       npx vite build --outDir "$OUT" --emptyOutDir
       aws s3 sync "$OUT/assets" "s3://$BUCKET/assets" --delete --cache-control "public,max-age=31536000,immutable"

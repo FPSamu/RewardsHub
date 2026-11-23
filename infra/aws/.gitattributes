@@ -1,0 +1,4 @@
+# Terraform y lab.sh corren con /bin/sh y bash (Linux, WSL, lab): un CRLF en los
+# heredocs de local-exec o en user_data rompe el script ("set: Illegal option -").
+# Forzar LF aunque el repo se clone en Windows con core.autocrlf=true.
+* text=auto eol=lf

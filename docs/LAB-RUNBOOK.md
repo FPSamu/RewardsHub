@@ -433,9 +433,20 @@ Con `stats_source = "daily"` el header no aparece (no hay réplica). Los número
    - **Cola y workers:** un backfill largo (C.3). En *Cola* sube "Mensajes en la cola" y "Antigüedad"; tras ~2 min por
      encima de 120 s aparece la anotación de `jobs-backlog` y en *Cómputo* sube "Instancias en servicio" de workers.
    - **ALB:** `for i in $(seq 300); do curl -s -o /dev/null "$API/business/all?limit=50"; done` → *Entrada* sube peticiones y p95.
-   - **Autoescalado de la API** (CPU > 60 %): el WAF bloquea a más de 1000 peticiones / 5 min por IP. Para esta demo
-     sube `waf_rate_limit = 20000` (o `enable_waf = false`), `./lab.sh up`, y luego
-     `wrk2 -t4 -c64 -d600s -R400 "$API/business/all?latitude=20.66&longitude=-103.35"`.
+   - **Autoescalado de la API** (CPU > `api_cpu_target`, 40 %) con el flujo de caja: `scripts/load/points-load.js` (k6) lee el saldo
+     (`GET /user-points/:userId`) y suma puntos (`POST /user-points/add` con `Idempotency-Key`) con los negocios del
+     seed (login de cajero, sin Firebase), subiendo los usuarios virtuales en 3 rampas hasta `PEAK_VUS` y
+     sosteniéndolos `HOLD`. Umbrales del NFR: p95 < 500 ms y < 1 % de errores (k6 sale con código 99 si no se cumplen).
+     1. Instala k6 (`winget install k6`, `brew install k6` o el paquete de Linux de grafana.com/docs/k6).
+     2. El WAF bloquea a más de 1000 peticiones / 5 min por IP y esta prueba hace ~300 por segundo. Súbelo **solo para
+        la prueba**, sin tocar `terraform.tfvars`: `./lab.sh up -var waf_rate_limit=2000000` (`-var` gana sobre
+        `terraform.tfvars`). Al terminar, `./lab.sh up` normal lo regresa a tu valor. Si k6 reporta `blocked_requests` > 0, el WAF o el rate limit siguen bloqueando.
+     3. No hagas antes la demo de fuerza bruta de D.4: el login de cajero comparte ese contador y respondería `429`.
+     4. `k6 run -e API_URL="$API" scripts/load/points-load.js` (~21 min por defecto; `-e PEAK_VUS=300 -e HOLD=12m` para
+        más carga). Cada iteración crea una transacción en la base del lab.
+     5. **Esperado:** en *Entrada* suben peticiones y p95; en *Cómputo* la CPU pasa de 40 % y "Instancias en servicio"
+        de la API sube de 2 hacia `api_max` (~10 min: decidir + arrancar + compilar); al bajar la carga regresa a 2
+        (el scale-in es lento, ~15 min). Con más instancias el p95 de k6 debería volver bajo 500 ms.
    - **App:** D.3 mueve *Idempotency-Key*; D.4 mueve *Caché del mapa* y *Rate limit*; C.4 la *Conciliación*; C.5 el *Retraso de la réplica*.
 3. **Esperado:** se mueven los paneles de ALB, ASG, SQS, WAF, Redis (solo modo elasticache), DynamoDB y App.
 

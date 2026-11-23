@@ -29,7 +29,7 @@
 # api_min        = 2
 # api_desired    = 2
 # api_max        = 4
-# api_cpu_target = 60                # % de CPU promedio que mantiene el ASG de la API
+# api_cpu_target = 40                # % de CPU promedio que mantiene el ASG de la API (Node usa 1 de 2 vCPU: saturada marca ~55 %)
 # worker_min     = 1
 # worker_max     = 3
 # backlog_age_seconds = 120          # jobs-backlog agrega un worker si un trabajo espera más que esto (2 min seguidos)

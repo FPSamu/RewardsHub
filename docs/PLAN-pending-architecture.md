@@ -330,7 +330,7 @@ In a lab session: `aws elasticache create-cache-cluster --cache-cluster-id rh-pr
 
 ### P6.2 Dashboard `RewardsHub · Lab` (JSON in git)
 - **Entrada:** ALB `RequestCount`, `TargetResponseTime` p50/p95, `HTTPCode_Target_5XX_Count`, `HTTPCode_ELB_5XX_Count`, `HealthyHostCount`/`UnHealthyHostCount`; WAF `BlockedRequests` for `rate-limit-per-ip`.
-- **Cómputo:** ASG `GroupInServiceInstances` (api, worker), EC2 `CPUUtilization` by ASG with the 60 % target line.
+- **Cómputo:** ASG `GroupInServiceInstances` (api, worker), EC2 `CPUUtilization` by ASG with the 40 % target line (`api_cpu_target`; was 60, unreachable for a single Node process on 2 vCPU).
 - **Cola:** SQS `ApproximateNumberOfMessagesVisible`, `…NotVisible`, `ApproximateAgeOfOldestMessage`; DLQ visible messages; alarm state annotations for `jobs-backlog` / `jobs-empty`.
 - **Datos:** ElastiCache `CPUUtilization`, `CurrConnections`, `CacheHits`/`CacheMisses` (if P4); DynamoDB consumed RCU/WCU, `ThrottledRequests` (if P5).
 - **App (custom namespace `RewardsHub`):** reconciliation mismatches, replication lag seconds, idempotent replays, cache hit ratio.

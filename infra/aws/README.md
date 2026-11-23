@@ -139,7 +139,7 @@ Si cambias el código o el `.env.lab`: `./lab.sh up` sube el zip nuevo y actuali
 ## Demostraciones para la práctica
 
 - **Balanceo**: `for i in $(seq 20); do curl -s $(terraform output -raw api_url)/health; done` y mira los logs de cada instancia.
-- **Autoescalado de la API**: sube `api_desired` en `terraform.tfvars`, o genera carga y mira cómo el ASG agrega instancias al pasar de 60 % de CPU.
+- **Autoescalado de la API**: sube `api_desired` en `terraform.tfvars`, o genera carga (`scripts/load/points-load.js`, ver `docs/LAB-RUNBOOK.md` D.6) y mira cómo el ASG agrega instancias al pasar de 40 % de CPU (`api_cpu_target`). El objetivo es 40 y no 60 porque la API corre en un solo proceso de Node, que usa un núcleo de los 2 de una t3.small: saturada marca ~55 % de CPU y con 60 nunca escalaba (prueba de carga del 2026-11-22: p95 del ALB ~0.59 s con la CPU en 54 %).
 - **Rate limiting**: más de 1000 peticiones en 5 minutos desde una IP reciben `429` (WAF). Ajustable con `waf_rate_limit`.
 - **Cola y workers**: encola un backfill largo (`./lab.sh enqueue daily-stats '{"from":"…","to":"…"}'`, se parte en un mensaje por semana); cuando el mensaje más viejo lleva más de 120 s esperando durante 2 minutos, la alarma `jobs-backlog` agrega un worker, y `jobs-empty` lo quita tras 15 min sin mensajes. Las métricas de SQS llegan a CloudWatch con algunos minutos de retraso: con un backfill corto (14 semanas, ~5 min con un worker) la alarma dispara cuando la cola ya se vació. Para ver el escalado *mientras* hay trabajo, encola un rango más largo o varios backfills seguidos. Un mensaje inválido (tipo desconocido, params mal formados) se descarta con `Mensaje inválido` en el log y no va a la DLQ; a la DLQ solo llegan trabajos que fallan 5 veces (visibilidad de 900 s → ~75 min).
 - **Idempotencia**: encola el mismo trabajo dos veces en el mismo minuto; solo uno se ejecuta (colección `jobruns` en Mongo).
@@ -155,7 +155,7 @@ Si cambias el código o el `.env.lab`: `./lab.sh up` sube el zip nuevo y actuali
   ./lab.sh grafana                                   # URL actual (la IP cambia cada sesión) y usuario
   terraform output -raw grafana_admin_password; echo
   ```
-  Dashboard *RewardsHub · Lab*: entrada (ALB, p50/p95, 5xx, WAF), cómputo (instancias por ASG, CPU con la línea del 60 %), cola (visibles, en proceso, antigüedad, DLQ, con las alarmas `jobs-backlog`/`jobs-empty` como anotaciones), datos (Redis/DynamoDB, fila colapsada) y la app. Durante una prueba de carga (`scripts/load/concurrent-redeem.ts`) o un backfill largo de `daily-stats` se ve escalar la API y los workers. Tu IP pública: `curl -s https://checkip.amazonaws.com`.
+  Dashboard *RewardsHub · Lab*: entrada (ALB, p50/p95, 5xx, WAF), cómputo (instancias por ASG, CPU con la línea del 40 %), cola (visibles, en proceso, antigüedad, DLQ, con las alarmas `jobs-backlog`/`jobs-empty` como anotaciones), datos (Redis/DynamoDB, fila colapsada) y la app. Durante una prueba de carga (`scripts/load/points-load.js`) o un backfill largo de `daily-stats` se ve escalar la API y los workers. Tu IP pública: `curl -s https://checkip.amazonaws.com`.
 - **Réplica en DynamoDB** (default: `enable_dynamo = true`, `stats_source = "dynamo"`; después de `./lab.sh seed` y de llenar `daily_stats`):
   ```bash
   ./lab.sh enqueue replicate-dynamo       # o esperar ≤ 10 min a EventBridge

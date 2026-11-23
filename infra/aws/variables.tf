@@ -248,9 +248,9 @@ variable "api_max" {
 }
 
 variable "api_cpu_target" {
-  description = "El ASG de la API agrega/quita instancias para mantener este % de CPU promedio."
+  description = "El ASG de la API agrega/quita instancias para mantener este % de CPU promedio. La API es un solo proceso de Node (un núcleo): en una t3.small (2 vCPU) saturada marca ~55 %, así que el objetivo debe quedar por debajo de 50 o nunca escala."
   type        = number
-  default     = 60
+  default     = 40
 }
 
 variable "worker_min" {
