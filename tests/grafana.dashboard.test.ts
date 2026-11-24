@@ -43,11 +43,11 @@ it.each([
     expect(metric(ns, name)).toBe(true);
 });
 
-it('TargetResponseTime en p50 y p95; CPU con la línea del 60 %', () => {
+it('TargetResponseTime en p50 y p95; CPU con la línea del 40 % (api_cpu_target)', () => {
     const stats = targets.filter((t) => t.metricName === 'TargetResponseTime').map((t) => t.statistic);
     expect(stats).toEqual(['p50', 'p95']);
     const cpu = panels.find((p) => p.title.startsWith('CPU promedio'));
-    expect(cpu.fieldConfig.defaults.thresholds.steps.at(-1).value).toBe(60);
+    expect(cpu.fieldConfig.defaults.thresholds.steps.at(-1).value).toBe(40);
 });
 
 it('las métricas propias del dashboard son las que publica la app (observability/metrics.ts)', () => {

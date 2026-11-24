@@ -12,6 +12,14 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
+// La app llama dotenv.config() al importarse: sin esto, un .env local con
+// Stripe/correo/S3 reales volvería a llenar las variables que borró el helper
+// y el test pegaría contra esos servicios.
+jest.mock('dotenv', () => {
+    const config = () => ({ parsed: {} });
+    return { __esModule: true, default: { config }, config };
+});
+
 let mongod: MongoMemoryServer;
 let app: any;
 let BusinessModel: any;
