@@ -255,12 +255,12 @@ case "${1:-}" in
       seed|compare-stats-sources|migrate-locations-geo|find-duplicate-memberships|reconcile-fix) ;;
       *) echo "❌ Script desconocido: '$SCRIPT' (seed | compare-stats-sources | migrate-locations-geo | find-duplicate-memberships | reconcile-fix)"; exit 1 ;;
     esac
-    safe_args "${ARGS[@]}" || exit 1
+    safe_args ${ARGS[@]+"${ARGS[@]}"} || exit 1  # bash 3.2 (macOS) + set -u: arreglo vacío
     check_creds
     ID=$(first_instance api)
     if [ -z "$ID" ] || [ "$ID" = "None" ]; then echo "❌ No hay una instancia de la API InService/Healthy todavía (./lab.sh status)"; exit 1; fi
     echo "🖥️  $SCRIPT en $ID (dentro de la VPC, entorno de /etc/rewardshub.env)"
-    ssm_run "$ID" "/usr/local/bin/rh-cli $SCRIPT ${ARGS[*]}"
+    ssm_run "$ID" "/usr/local/bin/rh-cli $SCRIPT ${ARGS[*]+${ARGS[*]}}"
     ;;
   mongo-eval)
     # ./lab.sh mongo-eval 'db.userpoints.countDocuments()'
