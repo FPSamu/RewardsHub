@@ -13,6 +13,7 @@
 #   ./lab.sh run <script> [args]    corre un script de mantenimiento en una instancia de la API:
 #                      compare-stats-sources | migrate-locations-geo | find-duplicate-memberships | reconcile-fix | seed
 #   ./lab.sh mongo-eval '<js>'      corre JS (mongosh) en la instancia de Mongo como el usuario de la app, en rewardshub_lab
+#   ./lab.sh demo [escenario]  pruebas guiadas con log para seguirlas en Grafana (sin escenario: la lista)
 #   ./lab.sh activate  verifica todas las cuentas y da suscripción lifetime a todos los negocios (sin correo ni Stripe)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -272,6 +273,12 @@ case "${1:-}" in
     [ -n "$MONGO_ID" ] && [ "$MONGO_ID" != "null" ] || { echo "❌ No hay instancia de Mongo (enable_mongo = false)"; exit 1; }
     B64=$(printf '%s' "$JS" | base64 | tr -d '\n')
     ssm_run "$MONGO_ID" "/usr/local/sbin/rh-mongo-eval $B64" 300
+    ;;
+  demo)
+    # Pruebas guiadas con log (scripts/lab/demo.mjs): ./lab.sh demo para ver la lista
+    check_creds
+    command -v node >/dev/null || { echo "❌ Necesitas Node ≥ 18 en tu máquina"; exit 1; }
+    exec node ../../scripts/lab/demo.mjs "${@:2}"
     ;;
   activate)
     # En el lab no hay correo ni webhooks de Stripe: las cuentas registradas

@@ -146,6 +146,34 @@ Los demás scripts de mantenimiento, igual (`./lab.sh run <script> [args]`; `--p
 El estado (`terraform.tfstate`) queda local en esta carpeta. No lo borres antes de `./lab.sh down`.
 Si cambias el código o el `.env.lab`: `./lab.sh up` sube el zip nuevo y actualiza el launch template, y luego `./lab.sh roll` reemplaza las instancias una por una (el lab no permite *instance refresh*, por eso es un paso aparte).
 
+## Pruebas guiadas: `./lab.sh demo`
+
+`scripts/lab/demo.mjs` (Node ≥ 18, sin dependencias) **fuerza** cada comportamiento de la arquitectura, lo registra con hora en la terminal y en `logs/lab-demo-*.log`, verifica el resultado esperado y dice qué panel de Grafana debe moverse. Requiere `./lab.sh seed`.
+
+```bash
+./lab.sh demo                 # lista de escenarios
+./lab.sh demo rapidos         # balanceo, cache, idempotencia, atomico, ratelimit, cola (~2 min)
+./lab.sh demo workers         # el ASG de workers escala por la antigüedad de la cola (~15 min)
+./lab.sh up -var waf_rate_limit=2000000 && ./lab.sh demo carga   # el ASG de la API escala por CPU; luego ./lab.sh up
+./lab.sh demo falla           # termina una instancia de la API mientras hace 1 petición/s
+./lab.sh demo waf --si        # bloquea TU IP en el ALB ~5–10 min (403)
+```
+
+| Escenario | Qué fuerza | Qué verifica | Panel de Grafana |
+|---|---|---|---|
+| `balanceo` | 120 peticiones al mapa | cuántas atendió cada instancia (cuenta en su log por SSM) | Entrada › Peticiones al ALB |
+| `cache` | la misma consulta del mapa 12 veces | `X-Cache`: MISS y luego HIT | App › Caché del mapa |
+| `idempotencia` | reintento, llave con otro body, 6 clics simultáneos, sin llave | replay, 422, una sola suma | App › Idempotency-Key |
+| `atomico` | 10 canjes simultáneos que juntos piden más de lo que hay | solo pasan los que alcanzan; saldo ≥ 0 | — (saldo en el log) |
+| `ratelimit` | 8 PIN equivocados en `negocio50` | 429 desde el 6.º (bloquea el PIN de ese negocio 15 min) | App › Rate limit |
+| `cola` | trabajos reales + un duplicado + un inválido | log de los workers: ejecutado, duplicado descartado, inválido descartado | Cola › Mensajes en la cola; App › Conciliación |
+| `workers` | backfills de daily-stats | alarma `jobs-backlog` y workers deseados | Cola › Antigüedad; Cómputo › Instancias |
+| `carga` | tráfico de caja (leer saldo, sumar, lista de clientes) | req/s, p95, CPU y API deseadas cada 15 s | Cómputo › CPU / Instancias |
+| `waf` | > 1000 peticiones en 5 min | primer 403 | Entrada › WAF |
+| `falla` | termina una instancia de la API | targets sanos y errores mientras se reemplaza | Entrada › Instancias sanas / 5xx |
+
+Grafana va 1–5 min atrás del log: las métricas de AWS se publican por minuto y las de la app cada 60 s. Usa el rango *Last 30 minutes* con refresco de 10 s.
+
 ## Demostraciones para la práctica
 
 - **Balanceo**: `for i in $(seq 20); do curl -s $(terraform output -raw api_url)/health; done` y mira los logs de cada instancia.
