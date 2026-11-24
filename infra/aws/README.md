@@ -70,7 +70,7 @@ http://<alb>.us-east-1.elb.amazonaws.com            → API
 | `src/observability/metrics.ts` | Con `METRICS_ENABLED=true` (`enable_app_metrics`) la API y los workers publican métricas propias en CloudWatch (namespace `RewardsHub`, dimensión `Role`) cada 60 s: diferencias de la conciliación, retraso de la réplica, replays de Idempotency-Key, aciertos de la caché del mapa, 429. Mismas credenciales que SQS; si falla, solo avisa en el log. |
 | `scripts/find-duplicate-memberships.ts` | Solo lectura: membresías activas duplicadas que impedirían crear el índice único nuevo (correr antes de desplegar en una base con datos). |
 | `scripts/load/concurrent-redeem.ts` | Demo de concurrencia e Idempotency-Key contra el ALB (ver *Demostraciones*). |
-| `lab.sh` | `enqueue <tipo> [json]` (params opcionales), `status` (+ salud de Mongo, Redis y retraso de la réplica de DynamoDB), `grafana` (URL actual), `seed`, `run <script>`, `mongo-eval '<js>'` (por SSM; nunca manda contraseñas). `up` toma tu IP pública como `admin_cidr` si no la pusiste. |
+| `lab.sh` | `enqueue <tipo> [json]` (params opcionales), `status` (+ salud de Mongo, Redis y retraso de la réplica de DynamoDB), `grafana` (URL actual), `seed`, `run <script>`, `mongo-eval '<js>'` (por SSM; nunca manda contraseñas), `activate` (cuentas de la web listas sin correo ni Stripe). `up` toma tu IP pública como `admin_cidr` si no la pusiste. |
 | `frontend.tf` | Si `frontend_dir` no tiene `package.json` (p. ej. un checkout sin el repo del frontend al lado), el frontend se omite con un aviso en vez de fallar. |
 
 Sin `SQS_QUEUE_URL`, `REDIS_URL`, `DDB_*`, `RATE_LIMITS`, `METRICS_ENABLED`, `GEO_QUERY_MODE`, `STATS_SOURCE` ni `MONGO_CONNECT_RETRIES` (local, Render) todo funciona igual que antes.
@@ -108,6 +108,16 @@ Sin `SQS_QUEUE_URL`, `REDIS_URL`, `DDB_*`, `RATE_LIMITS`, `METRICS_ENABLED`, `GE
    ./lab.sh down        # terraform destroy
    ```
 
+### Cuentas registradas desde la web: `./lab.sh activate`
+
+El lab no tiene correo ni webhooks de Stripe, así que una cuenta registrada desde la web con correo y contraseña queda **sin verificar** (el front la manda a `/verify-pending`), y un negocio queda **sin suscripción** (el front lo manda a `/business/subscription` y no aparece en el mapa). Los negocios del seed tampoco tienen suscripción.
+
+```bash
+./lab.sh activate   # verifica todas las cuentas, activa los negocios y les da suscripción lifetime
+```
+
+Solo escribe en `rewardshub_lab`. Se puede repetir: córrelo otra vez después de registrar cuentas nuevas, y luego cierra sesión y vuelve a entrar en la web.
+
 ### Datos de prueba en la base del lab
 
 Mongo vive dentro de la VPC, así que el seed corre en una instancia de la API (por SSM, con el mismo entorno que el servicio):
@@ -127,7 +137,7 @@ Los demás scripts de mantenimiento, igual (`./lab.sh run <script> [args]`; `--p
 ./lab.sh mongo-eval 'db.businesses.countDocuments()'           # JS como el usuario app en rewardshub_lab
 ```
 
-- Datos sintéticos (correos `@seed.rewardshub.test`, contraseña `lab12345` para `/auth/cashier-login`), sucursales en Guadalajara y CDMX.
+- Datos sintéticos (correos `negocio01@seed.rewardshub.test`, `cliente0001@seed.rewardshub.test`…, contraseña `lab12345` para el login normal y `/auth/cashier-login`; PIN de administrador `123456`), sucursales en Guadalajara y CDMX.
 - Los saldos de `userpoints` se calculan a partir de las transacciones generadas: la conciliación arranca en 0 diferencias.
 - Sin `--reset`, si ya hay datos del seed, se detiene (no duplica).
 - Al terminar borra los checkpoints de `replicate-dynamo` (`replication_checkpoints`): las transacciones del seed traen `updatedAt` del pasado y, con un checkpoint ya avanzado, nunca se copiarían. La próxima corrida copia todo.

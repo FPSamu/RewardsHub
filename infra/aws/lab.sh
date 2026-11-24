@@ -13,6 +13,7 @@
 #   ./lab.sh run <script> [args]    corre un script de mantenimiento en una instancia de la API:
 #                      compare-stats-sources | migrate-locations-geo | find-duplicate-memberships | reconcile-fix | seed
 #   ./lab.sh mongo-eval '<js>'      corre JS (mongosh) en la instancia de Mongo como el usuario de la app, en rewardshub_lab
+#   ./lab.sh activate  verifica todas las cuentas y da suscripción lifetime a todos los negocios (sin correo ni Stripe)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -271,6 +272,30 @@ case "${1:-}" in
     [ -n "$MONGO_ID" ] && [ "$MONGO_ID" != "null" ] || { echo "❌ No hay instancia de Mongo (enable_mongo = false)"; exit 1; }
     B64=$(printf '%s' "$JS" | base64 | tr -d '\n')
     ssm_run "$MONGO_ID" "/usr/local/sbin/rh-mongo-eval $B64" 300
+    ;;
+  activate)
+    # En el lab no hay correo ni webhooks de Stripe: las cuentas registradas
+    # desde la web se quedan sin verificar y los negocios sin suscripción (el
+    # front los manda a /verify-pending o a /business/subscription y no salen
+    # en el mapa). Esto las deja listas para probar. Solo toca rewardshub_lab
+    # (el usuario de Mongo de la app no puede escribir en otra base).
+    # Se puede repetir: correrlo de nuevo después de registrar cuentas nuevas.
+    exec "$0" mongo-eval "
+      const now = new Date();
+      const u = db.users.updateMany({ isVerified: { \$ne: true } }, { \$set: { isVerified: true } });
+      const b = db.businesses.updateMany(
+        { \$or: [{ isVerified: { \$ne: true } }, { status: { \$ne: 'active' } }] },
+        { \$set: { isVerified: true, status: 'active' } });
+      let s = 0;
+      db.businesses.find({}, { _id: 1 }).forEach((x) => {
+        const r = db.subscriptions.updateOne({ businessId: x._id }, { \$setOnInsert: {
+          businessId: x._id, stripeCustomerId: 'lab_' + x._id, planType: 'lifetime_access',
+          membershipStatus: 'lifetime', createdAt: now, updatedAt: now } }, { upsert: true });
+        s += r.upsertedCount;
+      });
+      print('✅ usuarios verificados: ' + u.modifiedCount + ' · negocios activados: ' + b.modifiedCount + ' · suscripciones lifetime nuevas: ' + s);
+      print('   Si ya tenías sesión abierta en la web, cierra sesión y vuelve a entrar.');
+    "
     ;;
   grafana)
     ID="$(terraform output -raw grafana_instance_id 2>/dev/null || true)"
