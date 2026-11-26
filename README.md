@@ -1,8 +1,8 @@
 # RewardsHub - Backend
 
-> RewardsHub is a univeral platform for rewards and fidelization programs between businesses and clients.
+> RewardsHub is a universal platform for rewards and loyalty programs between businesses and clients.
 > Businesses create a RewardsHub account and configure their custom rewards and points systems.
-> Clients use the app to generate an unique QR ID code, which will be used by businesses to accumulate points in the client's profile.
+> Clients use the app to generate a unique QR ID code, which will be used by businesses to accumulate points in the client's profile.
 > Clients can see all the businesses registered in the platform, labeled as `visited`, not `visited` and `rewards available`.
 
 > This project sets up endpoints and a backend structure with the objective to be used by both a web app and a mobile app.
